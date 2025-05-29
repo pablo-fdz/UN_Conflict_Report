@@ -25,3 +25,22 @@ Main steps behind the KG construction pipeline (source: [User Guide: Knowledge G
 User guides (essential to understand how to create the pipeline and maintain it):
 1. [User Guide: Knowledge Graph Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)
 2. [User Guide: Pipeline](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_pipeline.html)
+
+# Implementation guide
+
+Possible property types for the schema (`SchemaProperty`):
+
+```
+"BOOLEAN",
+"DATE",
+"DURATION",
+"FLOAT",
+"INTEGER",
+"LIST",
+"LOCAL_DATETIME",
+"LOCAL_TIME",
+"POINT",
+"STRING",
+"ZONED_DATETIME",
+"ZONED_TIME"
+```
