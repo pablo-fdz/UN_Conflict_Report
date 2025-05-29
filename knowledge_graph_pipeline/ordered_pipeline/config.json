@@ -12,7 +12,7 @@
     },
     "schema_config": {
         "create_schema": true,
-        "node_types": [
+        "nodes": [
             {"label": "Event", 
             "description": "Significant occurrences of the input text, such as conflicts, elections, coups, attacks or any other relevant information",
             "properties": [
@@ -52,7 +52,7 @@
             ]}
             
         ],
-        "relationship_types": [
+        "edges": [
             {"label": "OCCURRED_IN", 
             "description": "Indicates where an event took place",
             "properties": [
@@ -103,8 +103,8 @@
             {"label": "IS_WITHIN",
             "description": "Indicates that a location is part of a larger region or country"}
         ],
-        "suggest_pattern": false,
-        "patterns": [
+        "suggest_pattern": true,
+        "triplets": [
             [
                 "Event",
                 "OCCURRED_IN",
