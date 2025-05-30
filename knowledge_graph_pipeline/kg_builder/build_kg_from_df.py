@@ -23,8 +23,8 @@ async def build_kg_from_df(
         df: The polars dataframe to process
         document_base_field: Field from which to create the document node in the lexical graph
         text_column: The column containing the text to process
-        document_id_column: Optional column to use as document ID
         document_metadata_mapping: Optional mapping of document property names to dataframe columns
+        document_id_column: Optional column to use as document ID. A random UUID will be generated if not provided.
     
     Returns:
         List of pipeline results, one per row

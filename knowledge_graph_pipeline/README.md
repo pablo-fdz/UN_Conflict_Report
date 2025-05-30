@@ -28,6 +28,64 @@ User guides (essential to understand how to create the pipeline and maintain it)
 
 # Implementation guide
 
+## About the configuration file: allowed and forbidden changes
+
+All of the values from the JSON configuration file (e.g., `"gemini-2.0-flash"` in ` "model_name": "gemini-2.0-flash"`) can be adjusted. Nevertheless, **the keys should not be modified under any circumstance** (as the pipeline sometimes expects the existence of some keys with particular names). 
+
+Furthermore, in the schema configuration, `nodes`, `edges` and `triplets` need to have the following structure (but with the option of omitting some fields):
+
+```{json}
+{
+    ...
+    "schema_config": {
+        ...
+        "nodes": [
+            {"label": "Event", 
+            "description": "Significant occurrences of the input text, such as conflicts, elections, coups, attacks or any other relevant information",
+            "properties": [
+                {"name": "name", "type": "STRING", "description": "Clarifying description for the property."},
+                {"name": "date", "type": "DATE"},
+                {"name": "end_date", "type": "DATE"},
+                {"name": "type", "type": "STRING"},
+                {"name": "severity", "type": "INTEGER"},
+                {"name": "description", "type": "STRING"}
+            ]},
+            
+            ...
+            
+        ],
+        "edges": [
+            {"label": "OCCURRED_IN", 
+            "description": "Indicates where an event took place",
+            "properties": [
+                {"name": "start_date", "type": "DATE"},
+                {"name": "end_date", "type": "DATE", "description": "This description makes the LLM understand dates much better."},
+                {"name": "certainty", "type": "FLOAT"}
+            ]},
+            
+            ...
+
+        ],
+        ...
+        "triplets": [
+            [
+                "Event",
+                "OCCURRED_IN",
+                "Country"
+            ],
+            [
+                "Event",
+                "OCCURRED_IN",
+                "Region"
+            ],
+            ...
+        ],
+        ...
+    },
+    ...
+}
+```
+
 Possible property types for the schema (`SchemaProperty`):
 
 ```

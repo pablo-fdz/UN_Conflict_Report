@@ -11,29 +11,28 @@ from neo4j_graphrag.experimental.components.schema import (
     SchemaConfig
 )
 
-# script_dir = os.path.dirname(os.path.abspath(__file__))  # Path to the directory where this script is located
-
-# # Load environment variables from a .env file
-# dotenv_path = os.path.join(script_dir, '.env')  # Path to the .env file
-# load_dotenv(dotenv_path, override=True)
-
-# # Open configuration file from JSON format
-# config_path = os.path.join(script_dir, 'config.json')  # Path to the configuration file
-
-# with open(config_path, 'r') as config_file:
-#     config = json.load(config_file)
-
-# schema_config = config["schema_config"]
-
 def build_schema_from_config(schema_config: Dict[str, Any]) -> Optional[SchemaConfig]:
     """
-    Builds a SchemaConfig object from the schema configuration in the config.json file.
+    Builds a knowledge graph schema from a configuration dictionary.
     
     Args:
-        schema_config: The schema_config section from the config.json file
-        
+        schema_config: Dictionary containing node types, edge types, and relationship patterns
+                       for the knowledge graph schema
+    
     Returns:
-        SchemaConfig object or None if schema creation is disabled
+        Tuple of (entities, relations, triplets) where:
+        - entities: List of SchemaEntity objects representing node types
+        - relations: List of SchemaRelation objects representing edge types
+        - triplets: List of tuples (source, relation, target) representing valid relationship patterns
+        Returns (None, None, None) if schema creation is disabled in config
+    
+    Example:
+        Given a config with entities like 'Event', 'Actor', 'Country' and relations like 
+        'OCCURRED_IN', 'PARTICIPATED_IN', this function will return:
+        
+        - entities: [SchemaEntity(label='Event', ...), SchemaEntity(label='Actor', ...), ...]
+        - relations: [SchemaRelation(label='OCCURRED_IN', ...), ...]
+        - triplets: [('Event', 'OCCURRED_IN', 'Country'), ('Actor', 'PARTICIPATED_IN', 'Event'), ...]
     """
     # Check if schema creation is enabled
     if not schema_config.get("create_schema", False):
@@ -96,21 +95,3 @@ def build_schema_from_config(schema_config: Dict[str, Any]) -> Optional[SchemaCo
         ]
     
     return entities, relations, triplets
-
-# # Example usage of the build_schema_from_config function
-# async def main():
-#     entities, relations, triplets = await build_schema_from_config(schema_config)
-#     if entities is not None:
-#         print("Schema created successfully:")
-#         print("\nEntities:\n")
-#         pprint.pprint(entities)
-#         print("\nRelations:\n")
-#         pprint.pprint(relations)
-#         print("\nTriplets:\n")
-#         pprint.pprint(triplets)
-#     else:
-#         print("Schema creation is disabled in the configuration.")
-
-# if __name__ == "__main__":
-#     import asyncio
-#     asyncio.run(main())
