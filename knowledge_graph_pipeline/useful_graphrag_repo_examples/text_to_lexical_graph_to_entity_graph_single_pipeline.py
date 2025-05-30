@@ -6,6 +6,9 @@ and another for creating the entity graph (entities and relations derived from t
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
+from dotenv import load_dotenv
 
 from neo4j_graphrag.embeddings.openai import OpenAIEmbeddings
 from neo4j_graphrag.experimental.components.embedder import TextChunkEmbedder
@@ -16,9 +19,9 @@ from neo4j_graphrag.experimental.components.kg_writer import Neo4jWriter
 from neo4j_graphrag.experimental.components.lexical_graph import LexicalGraphBuilder
 from neo4j_graphrag.experimental.components.schema import (
     SchemaBuilder,
-    NodeType,
-    PropertyType,
-    RelationshipType,
+    SchemaEntity,
+    SchemaRelation,
+    SchemaProperty
 )
 from neo4j_graphrag.experimental.components.text_splitters.fixed_size_splitter import (
     FixedSizeSplitter,
@@ -27,8 +30,14 @@ from neo4j_graphrag.experimental.components.types import LexicalGraphConfig
 from neo4j_graphrag.experimental.pipeline import Pipeline
 from neo4j_graphrag.experimental.pipeline.pipeline import PipelineResult
 from neo4j_graphrag.llm import LLMInterface, OpenAILLM
-
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from kg_builder.utilities import GeminiLLM
+from neo4j_graphrag.embeddings import SentenceTransformerEmbeddings
 import neo4j
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(script_dir, '.env'), override=True)
+embedder = SentenceTransformerEmbeddings(model='all-MiniLM-L6-v2')
 
 
 async def define_and_run_pipeline(
@@ -60,7 +69,7 @@ async def define_and_run_pipeline(
         FixedSizeSplitter(chunk_size=200, chunk_overlap=50, approximate=False),
         "splitter",
     )
-    pipe.add_component(TextChunkEmbedder(embedder=OpenAIEmbeddings()), "chunk_embedder")
+    pipe.add_component(TextChunkEmbedder(embedder=embedder), "chunk_embedder")
     pipe.add_component(
         LexicalGraphBuilder(lexical_graph_config),
         "lexical_graph_builder",
@@ -118,40 +127,43 @@ async def define_and_run_pipeline(
             },
         },
         "schema": {
-            "node_types": [
-                NodeType(
+            "entities": [
+                SchemaEntity(
                     label="Person",
+                    description="An individual human being.",
                     properties=[
-                        PropertyType(name="name", type="STRING"),
-                        PropertyType(name="place_of_birth", type="STRING"),
-                        PropertyType(name="date_of_birth", type="DATE"),
+                        SchemaProperty(name="name", type="STRING"),
+                        SchemaProperty(name="place_of_birth", type="STRING"),
+                        SchemaProperty(name="date_of_birth", type="DATE"),
                     ],
                 ),
-                NodeType(
+                SchemaEntity(
                     label="Organization",
+                    description="A structured group of people with a common purpose.",
                     properties=[
-                        PropertyType(name="name", type="STRING"),
-                        PropertyType(name="country", type="STRING"),
+                        SchemaProperty(name="name", type="STRING"),
+                        SchemaProperty(name="country", type="STRING"),
                     ],
                 ),
-                NodeType(
+                SchemaEntity(
                     label="Field",
                     properties=[
-                        PropertyType(name="name", type="STRING"),
+                        SchemaProperty(name="name", type="STRING"),
                     ],
                 ),
             ],
-            "relationship_types": [
-                RelationshipType(
+            "relations": [
+                SchemaRelation(
+                    label="EMPLOYED_BY",
+                    description="Indicates employment relationship.",
+                ),
+                SchemaRelation(
                     label="WORKED_ON",
                 ),
-                RelationshipType(
-                    label="WORKED_FOR",
-                ),
             ],
-            "patterns": [
+            "potential_schema": [
                 ("Person", "WORKED_ON", "Field"),
-                ("Person", "WORKED_FOR", "Organization"),
+                ("Person", "EMPLOYED_BY", "Organization"),
             ],
         },
         "extractor": {
@@ -162,7 +174,8 @@ async def define_and_run_pipeline(
     return await pipe.run(pipe_inputs)
 
 
-async def main(driver: neo4j.Driver) -> PipelineResult:
+async def main(driver: neo4j.Driver, gemini_api_key) -> PipelineResult:
+
     # optional: define some custom node labels for the lexical graph:
     lexical_graph_config = LexicalGraphConfig(
         chunk_node_label="TextPart",
@@ -172,12 +185,10 @@ async def main(driver: neo4j.Driver) -> PipelineResult:
             wrote many groundbreaking papers especially about general relativity
             and quantum mechanics. He worked for many different institutions, including
             the University of Bern in Switzerland and the University of Oxford."""
-    llm = OpenAILLM(
-        model_name="gpt-4o",
-        model_params={
-            "max_tokens": 1000,
-            "response_format": {"type": "json_object"},
-        },
+    llm = GeminiLLM(
+        model_name="gemini-2.0-flash",
+        google_api_key=gemini_api_key,
+        model_params={'temperature': 0.0}
     )
     res = await define_and_run_pipeline(
         driver,
@@ -185,12 +196,15 @@ async def main(driver: neo4j.Driver) -> PipelineResult:
         lexical_graph_config,
         text,
     )
-    await llm.async_client.close()
     return res
 
 
 if __name__ == "__main__":
+    neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+    neo4j_username = os.getenv("NEO4J_USERNAME", "neo4j")
+    neo4j_password = os.getenv("NEO4J_PASSWORD", "password")
+    gemini_api_key = os.getenv('GEMINI_API_KEY')
     with neo4j.GraphDatabase.driver(
-        "bolt://localhost:7687", auth=("neo4j", "password")
+        neo4j_uri, auth=(neo4j_username, neo4j_password)
     ) as driver:
-        print(asyncio.run(main(driver)))
+        print(asyncio.run(main(driver, gemini_api_key)))

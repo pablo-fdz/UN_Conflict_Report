@@ -2,6 +2,7 @@ from neo4j_graphrag.llm import LLMInterface, LLMResponse
 from langchain_google_genai import GoogleGenerativeAI
 from typing import Any, Optional
 import asyncio
+from google import genai
 from typing import Any, List, Optional, Union
 from neo4j_graphrag.message_history import MessageHistory
 from neo4j_graphrag.types import LLMMessage

@@ -2,6 +2,7 @@
 from typing import Dict, List, Tuple, Any, Optional, Union
 import time
 import polars as pl
+import uuid
 from .custom_kg_pipeline import CustomKGPipeline
 
 # Neo4j and Neo4j GraphRAG imports
@@ -51,7 +52,13 @@ async def build_kg_from_df(
             if document_metadata_mapping:  # Check if metadata mapping is provided
                 for prop_name, column_name in document_metadata_mapping.items():
                     if column_name in row:
-                        processed_metadata[prop_name] = row[column_name]
+                        value = row[column_name]
+                        if value is None:
+                            processed_metadata[prop_name] = ""
+                        elif not isinstance(value, str):
+                            raise TypeError(f"Metadata fields must be converted to strings before passing into pipeline. Expected string value for column '{column_name}', got {type(value).__name__}")
+                        else:
+                            processed_metadata[prop_name] = value
                     else:
                         print(f"Warning: Column '{column_name}' not found in row data. Skipping metadata property '{prop_name}'.")
             
@@ -59,7 +66,7 @@ async def build_kg_from_df(
             doc_base_field = row[document_base_field]
 
             # Get document ID if column specified
-            doc_id = row.get(document_id_column) if document_id_column else None
+            doc_id = row.get(document_id_column) if document_id_column else str(uuid.uuid4())
             
             # Process the text with the pipeline
             result = await kg_pipeline.run_async(
