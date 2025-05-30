@@ -154,13 +154,14 @@ class CustomKGPipeline:
             },
             "extractor": {  # Define additional inputs for the entity relation extractor component
                 "examples": self.examples,  # Examples for few-shot learning in the prompt
+                "lexical_graph_config": self.lexical_graph_config,  # Lexical graph configuration. Oddly enough, this must be included even if we are not creating a lexical graph in the extractor component, but this is needed to link the lexical graph created in the LexicalGraphBuilder component to the entity graph created in the LLMEntityRelationExtractor component.
             }
         }
         
         # Run the pipeline asynchronously (.run() method of the Pipeline class)
         # already handles the execution of all components in the pipeline in
         # an asynchronous manner, so we don't need to worry about that.
-        return pipe.run(pipe_inputs)
+        return await pipe.run(pipe_inputs)
     
     def _create_pipeline(self) -> Pipeline:
         """Create and configure the pipeline with all components.
