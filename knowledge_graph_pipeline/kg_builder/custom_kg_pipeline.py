@@ -21,7 +21,7 @@ import neo4j
 from neo4j_graphrag.embeddings import Embedder
 from neo4j_graphrag.experimental.components.embedder import TextChunkEmbedder
 from neo4j_graphrag.experimental.components.entity_relation_extractor import LLMEntityRelationExtractor
-from neo4j_graphrag.experimental.components.resolver import SpaCySemanticMatchResolver
+from neo4j_graphrag.experimental.components.resolver import EntityResolver, BasePropertySimilarityResolver
 from neo4j_graphrag.experimental.components.kg_writer import Neo4jWriter
 from neo4j_graphrag.experimental.components.lexical_graph import LexicalGraphBuilder
 from neo4j_graphrag.experimental.components.schema import SchemaBuilder
@@ -49,8 +49,7 @@ class CustomKGPipeline:
         schema_config: Dict[str, Any],
         prompt_template: Union[ERExtractionTemplate, str] = ERExtractionTemplate(),
         text_splitter_config: Optional[Dict[str, Any]] = None,
-        perform_entity_resolution: bool = True,
-        similarity_threshold: float = 0.8,
+        resolver: Union[EntityResolver, BasePropertySimilarityResolver] = None,
         on_error: str = "IGNORE",
         batch_size: int = 1000,
         max_concurrency: int = 5,
@@ -67,8 +66,7 @@ class CustomKGPipeline:
             schema_config: Configuration for the schema (entities, relations, patterns)
             prompt_template: Custom prompt template for entity extraction
             text_splitter_config: Optional, text splitter configuration dictionary. Defaults to FixedSizeSplitter with chunk size 100000 and overlap 1000.
-            perform_entity_resolution: Whether to merge similar entities
-            similarity_threshold: Threshold for entity resolution (0-1) 
+            resolver: Optional, entity resolver instance for resolving entities in the graph. Can be an instance of EntityResolver (like SinglePropertyExactMatchResolver) or BasePropertySimilarityResolver (like SpaCySemanticMatchResolver).
             on_error: Error handling strategy for entity extraction ("IGNORE" or "RAISE")
             batch_size: Batch size for writing to Neo4j. Defaults to 1000.
             max_concurrency: Maximum number of concurrent LLM requests. Defaults to 5.
@@ -88,8 +86,7 @@ class CustomKGPipeline:
             self.chunk_overlap = text_splitter_config.get('chunk_overlap', 10**3)
         
         self.prompt_template = prompt_template
-        self.perform_entity_resolution = perform_entity_resolution
-        self.similarity_threshold = similarity_threshold
+        self.resolver = resolver
         self.on_error = on_error
         self.batch_size = batch_size
         self.max_concurrency = max_concurrency
@@ -218,19 +215,16 @@ class CustomKGPipeline:
             "eg_writer"
         )
         
-        # Add entity resolution if enabled
-        if self.perform_entity_resolution:
+        # Add entity resolution if resolver has been provided
+        if self.resolver is not None:
+            if not isinstance(self.resolver, (EntityResolver, BasePropertySimilarityResolver)):
+                # Ensure the resolver is an instance of EntityResolver or its subclasses
+                raise TypeError("Resolver must be an instance of EntityResolver or BasePropertySimilarityResolver")
             pipe.add_component(
-                SpaCySemanticMatchResolver(  # Merge nodes with same label and similar textual properties
-                    self.driver,
-                    filter_query=None,  # "WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}",  # Used to reduce the resolution scope to a specific document
-                    resolve_properties=["name"],  # Properties to use for resolution (default is "name")
-                    similarity_threshold=self.similarity_threshold,  # The similarity threshold above which nodes are merged (default is 0.8). Higher threshold will result in less false positives, but may miss some matches. 
-                    spacy_model="en_core_web_lg"  # spaCy model to use for resolution (default is "en_core_web_lg")
-                ),
+                self.resolver,  # Custom resolver instance
                 "resolver"
             )
-        
+
         # Configure connections between components
         self._configure_pipeline_connections(pipe)
         
@@ -292,8 +286,8 @@ class CustomKGPipeline:
             input_config={}  # This was empty in the example code: there is no specific input configuration needed for the Neo4jWriter component (all inputs are provided by the previous components)
         )
         
-        # Connect entity resolution if enabled
-        if self.perform_entity_resolution:
+        # Connect entity resolution if provided
+        if self.resolver is not None:
             pipe.connect(
                 start_component_name="eg_writer",
                 end_component_name="resolver",  
