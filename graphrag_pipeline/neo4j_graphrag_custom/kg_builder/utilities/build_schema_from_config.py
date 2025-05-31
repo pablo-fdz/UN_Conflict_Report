@@ -7,11 +7,10 @@ import pprint
 from neo4j_graphrag.experimental.components.schema import (
     SchemaEntity, 
     SchemaRelation, 
-    SchemaProperty, 
-    SchemaConfig
+    SchemaProperty
 )
 
-def build_schema_from_config(schema_config: Dict[str, Any]) -> Optional[SchemaConfig]:
+def build_schema_from_config(schema_config: Dict[str, Any]) -> Tuple[Optional[List[SchemaEntity]], Optional[List[SchemaRelation]], Optional[List[Tuple[str, str, str]]]]:
     """
     Builds a knowledge graph schema from a configuration dictionary.
     
