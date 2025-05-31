@@ -46,7 +46,8 @@ class CustomKGPipeline:
         llm: LLMInterface,
         driver: neo4j.Driver,
         embedder: Embedder,
-        schema_config: Dict[str, Any],
+        from_schema: bool = True,
+        schema_config: Optional[Dict[str, Any]] = None,
         prompt_template: Union[ERExtractionTemplate, str] = ERExtractionTemplate(),
         text_splitter_config: Optional[Dict[str, Any]] = None,
         resolver: Union[EntityResolver, BasePropertySimilarityResolver] = None,
@@ -63,7 +64,8 @@ class CustomKGPipeline:
             llm: LLM instance for entity and relation extraction
             driver: Neo4j driver instance
             embedder: Embedding model instance
-            schema_config: Configuration for the schema (entities, relations, patterns)
+            from_schema: If True, use schema-based entity extraction; if False, extract without schema
+            schema_config: Configuration for the schema (entities, relations, patterns). A dictionary containing the schema is needed in order to create the graph from a schema.
             prompt_template: Custom prompt template for entity extraction
             text_splitter_config: Optional, text splitter configuration dictionary. Defaults to FixedSizeSplitter with chunk size 100000 and overlap 1000.
             resolver: Optional, entity resolver instance for resolving entities in the graph. Can be an instance of EntityResolver (like SinglePropertyExactMatchResolver) or BasePropertySimilarityResolver (like SpaCySemanticMatchResolver).
@@ -75,6 +77,7 @@ class CustomKGPipeline:
         self.llm = llm
         self.driver = driver
         self.embedder = embedder
+        self.from_schema = from_schema
         self.schema_config = schema_config
         
         # Set up default text splitter parameters if not provided
@@ -92,21 +95,31 @@ class CustomKGPipeline:
         self.max_concurrency = max_concurrency
         self.examples = examples
         
-        # Process schema configuration from the schema JSON file
-        self.entities, self.relations, self.triplets = build_schema_from_config(schema_config)
+        # Process schema configuration from the schema JSON file only if `from_schema` is True
+        if self.from_schema == True:
+            if not self.schema_config:
+                raise ValueError("Schema configuration must be provided when from_schema is True")
+            if not isinstance(self.schema_config, dict):
+                raise TypeError("Schema configuration must be a dictionary")
+            self.entities, self.relations, self.triplets = build_schema_from_config(self.schema_config)
+        else:
+            self.entities, self.relations, self.triplets = None, None, None
         
         # Set up default lexical graph config
         self.lexical_graph_config = LexicalGraphConfig()
         
-        # Process schema enforcement mode from the configuration file for the schema
-        enforce_schema_mapping = {
-            "STRICT": SchemaEnforcementMode.STRICT,  # Enforce strict schema validation
-            "NONE": SchemaEnforcementMode.NONE,  # Do not enforce schema validation
-        }
-        self.enforce_schema = enforce_schema_mapping.get(
-            schema_config.get('enforce_schema', 'NONE'),  # Default to NONE if not specified
-            SchemaEnforcementMode.NONE  # Fallback to NONE if invalid value
-        )
+        if self.from_schema and self.schema_config:  # If the creation from schema is set to True and 
+            # Process schema enforcement mode from the configuration file for the schema
+            enforce_schema_mapping = {
+                "STRICT": SchemaEnforcementMode.STRICT,  # Enforce strict schema validation
+                "NONE": SchemaEnforcementMode.NONE,  # Do not enforce schema validation
+            }
+            self.enforce_schema = enforce_schema_mapping.get(
+                self.schema_config.get('enforce_schema', 'NONE'),  # Default to NONE if not specified
+                SchemaEnforcementMode.NONE  # Fallback to NONE if invalid value
+            )
+        else:
+            self.enforce_schema = SchemaEnforcementMode.NONE
     
     async def run_async(
         self, 
@@ -143,18 +156,23 @@ class CustomKGPipeline:
                     "metadata": document_metadata,  # Optional metadata associated with the document that we want to include as properties of the document node
                     "uid": document_id  # Optional unique identifier for the document, if not provided a unique UUID will be created automatically
                 },
-            },
-            "schema": {  # Define additional inputs for the schema builder component
-                "entities": self.entities,  # List of entities from which to create the schema
-                "relations": self.relations,  # List of relations from which to create the schema
-                "potential_schema": self.triplets  # List of triplets to create the schema from
-            },
-            "extractor": {  # Define additional inputs for the entity relation extractor component
-                "examples": self.examples,  # Examples for few-shot learning in the prompt
-                "lexical_graph_config": self.lexical_graph_config,  # Lexical graph configuration. Oddly enough, this must be included even if we are not creating a lexical graph in the extractor component, but this is needed to link the lexical graph created in the LexicalGraphBuilder component to the entity graph created in the LLMEntityRelationExtractor component.
             }
         }
         
+        # Only add schema inputs if we're using schema
+        if self.from_schema:
+            pipe_inputs["schema"] = {  # Define additional inputs for the schema builder component
+                "entities": self.entities,  # List of entities from which to create the schema
+                "relations": self.relations,  # List of relations from which to create the schema
+                "potential_schema": self.triplets  # List of triplets to create the schema from
+            }
+
+        # Complete the pipe inputs with the extractor component inputs
+        pipe_inputs["extractor"] = {  # Define additional inputs for the entity relation extractor component
+                "examples": self.examples,  # Examples for few-shot learning in the prompt
+                "lexical_graph_config": self.lexical_graph_config,  # Lexical graph configuration. Oddly enough, this must be included even if we are not creating a lexical graph in the extractor component, but this is needed to link the lexical graph created in the LexicalGraphBuilder component to the entity graph created in the LLMEntityRelationExtractor component.
+            }
+
         # Run the pipeline asynchronously (.run() method of the Pipeline class)
         # already handles the execution of all components in the pipeline in
         # an asynchronous manner, so we don't need to worry about that.
@@ -177,14 +195,17 @@ class CustomKGPipeline:
             ),
             "splitter"  # Name of the component in the pipeline
         )
+
         pipe.add_component(
             TextChunkEmbedder(embedder=self.embedder), 
             "chunk_embedder"
         )
+
         pipe.add_component(
             LexicalGraphBuilder(self.lexical_graph_config), 
             "lexical_graph_builder"
         )
+
         pipe.add_component(
             Neo4jWriter(
                 self.driver,  # Neo4j driver instance
@@ -192,10 +213,15 @@ class CustomKGPipeline:
             ), 
             "lg_writer"
         )
-        pipe.add_component(
-            SchemaBuilder(),  # To enable the creation of a schema based on the provided entities, relationships and patterns 
-            "schema"
-        )
+
+        if self.from_schema:  # Add schema builder only if `from_schema` is True
+            pipe.add_component(
+                SchemaBuilder(),  # To enable the creation of a schema based on the provided entities, relationships and patterns 
+                "schema"
+            )
+        else:  # If `from_schema` is False, omit the schema component
+            pass
+
         pipe.add_component(
             LLMEntityRelationExtractor(
                 llm=self.llm,  # LLM instance to extract entities and relations
@@ -207,6 +233,7 @@ class CustomKGPipeline:
             ),
             "extractor"
         )
+
         pipe.add_component(
             Neo4jWriter(
                 self.driver, 
@@ -266,11 +293,14 @@ class CustomKGPipeline:
             input_config={"chunks": "chunk_embedder"}  # Pass the output of "chunk_embedder" as input to "extractor", through the parameter `chunks`
         )
         
-        pipe.connect(
-            start_component_name="schema",  # Output of the SchemaBuilder.run() method: "SchemaConfig" containing the created schema, with the list of node types, relationship types and patterns.
-            end_component_name="extractor", 
-            input_config={"schema": "schema"}  # Pass the output of "schema" as input to "extractor", through the parameter `schema`
-        )
+        if self.from_schema:  # If `from_schema` is True, connect the schema builder with the extractor
+            pipe.connect(
+                start_component_name="schema",  # Output of the SchemaBuilder.run() method: "SchemaConfig" containing the created schema, with the list of node types, relationship types and patterns.
+                end_component_name="extractor", 
+                input_config={"schema": "schema"}  # Pass the output of "schema" as input to "extractor", through the parameter `schema`
+            )
+        else:  # If `from_schema` is False, do not connect the schema builder with the extractor
+            pass
         
         # Connect entity graph writer
         pipe.connect(
