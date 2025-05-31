@@ -1,13 +1,17 @@
 {
-    "llm_config": {
-        "model_name": "gemini-2.0-flash",
-        "model_params": {
-            "temperature": 0.0
-        }
+    "text_splitter_config": {
+        "chunk_size": 100000,
+        "chunk_overlap": 1000
     },
     "embedder_config": {
         "model_name": "all-MiniLM-L6-v2",
         "model_params": {
+        }
+    },
+    "llm_config": {
+        "model_name": "gemini-2.0-flash",
+        "model_params": {
+            "temperature": 0.0
         }
     },
     "schema_config": {
@@ -192,8 +196,25 @@
         "use_default": false,
         "template": "You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph that will be used for creating security reports for different countries.\n\nExtract the entities (nodes) and specify their type from the following Input text.\nAlso extract the relationships between these nodes. The relationship direction goes from the start node to the end node.\n\nReturn result as JSON using the following format:\n{{\"nodes\": [ {{\"id\": \"0\", \"label\": \"the type of entity\", \"properties\": {{\"name\": \"name of entity\" }} }}],\n\"relationships\": [{{\"type\": \"TYPE_OF_RELATIONSHIP\", \"start_node_id\": \"0\", \"end_node_id\": \"1\", \"properties\": {{\"details\": \"Description of the relationship\"}} }}] }}\n\n- Use only the information from the Input text. Do not add any additional information.\n- If the input text is empty, return empty Json.\n- Make sure to create as many nodes and relationships as needed to offer rich context for generating a security-related knowledge graph.\n- An AI knowledge assistant must be able to read this graph and immediately understand the context to inform detailed research questions.\n- Multiple documents will be ingested from different sources and we are using this property graph to connect information, so make sure entity types are fairly general.\n- Do not create edges between nodes and chunks when the relationship is not clear enough.\n\nUse only the following nodes and relationships (if provided):\n{schema}\n\nAssign a unique ID (string) to each node, and reuse it to define relationships.\nDo respect the source and target node types for relationship and the relationship direction.\n\nDo not return any additional information other than the JSON in it.\n\nExamples:\n{examples}\n\nInput text:\n{text}"
     },
-    "text_splitter_config": {
-        "chunk_size": 100000,
-        "chunk_overlap": 1000
+    "examples_config": {
+        "pass_examples": false,
+        "examples": [
+            {
+                "text": "Text: On January 1, 2023, a significant conflict erupted in the Middle East involving multiple countries and organizations. The conflict, named 'Middle East Conflict 2023', lasted until March 15, 2023. Key actors included the 'Middle East Coalition' and the 'Opposing Forces'. The conflict resulted in a high level of destruction and instability in the region.",
+                "schema": {
+                    "nodes": [
+                        {"id": "0", "label": "Event", "properties": {"name": "Middle East Conflict 2023", "date": "2023-01-01", "end_date": "2023-03-15", "type": "Conflict", "severity": 5, "description": "A significant conflict in the Middle East."}},
+                        {"id": "1", "label": "Actor", "properties": {"name": "Middle East Coalition", "type": "Organization"}},
+                        {"id": "2", "label": "Actor", "properties": {"name": "Opposing Forces", "type": "Organization"}},
+                        {"id": "3", "label": "Region", "properties": {"name": "Middle East", "stability": 0.2}}
+                    ],
+                    "relationships": [
+                        {"type": "OCCURRED_IN", "start_node_id": "0", "end_node_id": "3", "properties": {"start_date": null, "end_date": null, "certainty": 1.0}},
+                        {"type": "PARTICIPATED_IN", "start_node_id": "1", "end_node_id": "0", "properties": {"role": null, "significance": 1.0, "start_date": null, "end_date": null}},
+                        {"type": "PARTICIPATED_IN", "start_node_id": "2", "end_node_id": "0", "properties": {"role": null, "significance": 1.0, "start_date": null, "end_date": null}}
+                    ]
+                }
+            }
+        ]
     }
 }
