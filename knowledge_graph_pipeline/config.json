@@ -195,6 +195,5 @@
     "text_splitter_config": {
         "chunk_size": 100000,
         "chunk_overlap": 1000
-    },
-    "perform_entity_resolution": true
+    }
 }
