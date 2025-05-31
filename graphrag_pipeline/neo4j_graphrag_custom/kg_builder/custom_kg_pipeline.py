@@ -46,15 +46,14 @@ class CustomKGPipeline:
         llm: LLMInterface,
         driver: neo4j.Driver,
         embedder: Embedder,
-        from_schema: bool = True,
         schema_config: Optional[Dict[str, Any]] = None,
         prompt_template: Union[ERExtractionTemplate, str] = ERExtractionTemplate(),
         text_splitter_config: Optional[Dict[str, Any]] = None,
         resolver: Union[EntityResolver, BasePropertySimilarityResolver] = None,
+        examples_config: Optional[Dict[str, Any]] = None,
         on_error: str = "IGNORE",
         batch_size: int = 1000,
-        max_concurrency: int = 5,
-        examples: str = ""
+        max_concurrency: int = 5
     ):
         
         """Initialize the CustomKGPipeline with the necessary components. Mimics
@@ -64,22 +63,24 @@ class CustomKGPipeline:
             llm: LLM instance for entity and relation extraction
             driver: Neo4j driver instance
             embedder: Embedding model instance
-            from_schema: If True, use schema-based entity extraction; if False, extract without schema
-            schema_config: Configuration for the schema (entities, relations, patterns). A dictionary containing the schema is needed in order to create the graph from a schema.
+            schema_config: Configuration for the schema (entities, relations, patterns). 
+                          If provided and 'create_schema' is True, will use schema-based extraction.
+                          If None or 'create_schema' is False, will extract without schema.
             prompt_template: Custom prompt template for entity extraction
             text_splitter_config: Optional, text splitter configuration dictionary. Defaults to FixedSizeSplitter with chunk size 100000 and overlap 1000.
             resolver: Optional, entity resolver instance for resolving entities in the graph. Can be an instance of EntityResolver (like SinglePropertyExactMatchResolver) or BasePropertySimilarityResolver (like SpaCySemanticMatchResolver).
+            examples_config: Configuration for examples. If provided and 'pass_examples' is True, will use few-shot learning with provided examples.
+                           If None or 'pass_examples' is False, no examples will be used.
             on_error: Error handling strategy for entity extraction ("IGNORE" or "RAISE")
             batch_size: Batch size for writing to Neo4j. Defaults to 1000.
             max_concurrency: Maximum number of concurrent LLM requests. Defaults to 5.
-            examples: Examples for few-shot learning in the prompt
         """
         self.llm = llm
         self.driver = driver
         self.embedder = embedder
-        self.from_schema = from_schema
         self.schema_config = schema_config
-        
+        self.examples_config = examples_config
+
         # Set up default text splitter parameters if not provided
         if text_splitter_config is None:
             self.chunk_size = 10**5
@@ -88,27 +89,43 @@ class CustomKGPipeline:
             self.chunk_size = text_splitter_config.get('chunk_size', 10**5)
             self.chunk_overlap = text_splitter_config.get('chunk_overlap', 10**3)
         
+        # Determine if we should use schema-based extraction
+        self.from_schema = (
+            schema_config is not None and 
+            isinstance(schema_config, dict) and 
+            schema_config.get("create_schema", False)
+        )
+        
         self.prompt_template = prompt_template
         self.resolver = resolver
+
+        # Determine if we should use examples for few-shot learning
+        self.pass_examples = (
+            examples_config is not None and 
+            isinstance(examples_config, dict) and 
+            examples_config.get("pass_examples", False)
+        )
+
         self.on_error = on_error
         self.batch_size = batch_size
         self.max_concurrency = max_concurrency
-        self.examples = examples
         
-        # Process schema configuration from the schema JSON file only if `from_schema` is True
-        if self.from_schema == True:
-            if not self.schema_config:
-                raise ValueError("Schema configuration must be provided when from_schema is True")
-            if not isinstance(self.schema_config, dict):
-                raise TypeError("Schema configuration must be a dictionary")
+        # Process schema configuration if using schema
+        if self.from_schema:
             self.entities, self.relations, self.triplets = build_schema_from_config(self.schema_config)
+            
+            # Validate that schema was actually created
+            if self.entities is None and self.relations is None:
+                raise ValueError(
+                    "Schema creation failed. Check that your schema_config contains valid 'nodes' and 'edges' definitions."
+                )
         else:
             self.entities, self.relations, self.triplets = None, None, None
         
         # Set up default lexical graph config
         self.lexical_graph_config = LexicalGraphConfig()
         
-        if self.from_schema and self.schema_config:  # If the creation from schema is set to True and 
+        if self.from_schema:  # If the creation from schema is set to True 
             # Process schema enforcement mode from the configuration file for the schema
             enforce_schema_mapping = {
                 "STRICT": SchemaEnforcementMode.STRICT,  # Enforce strict schema validation
@@ -121,6 +138,19 @@ class CustomKGPipeline:
         else:
             self.enforce_schema = SchemaEnforcementMode.NONE
     
+        # Process examples configuration
+        if self.pass_examples:  # If the creation of examples is set to True
+            examples = self.examples_config.get("examples", None)
+            if examples is None:
+                raise ValueError("Few-shot learning was considered, but there was no key 'examples' with a list of examples.")
+            else:
+                try:
+                    self.examples = str(examples)  # Convert examples to string format
+                except Exception as e:
+                    raise ValueError(f"Could not convert examples to string. Received: {type(examples)} with value {examples}. Error: {e}")
+        else:  # If the creation of examples is set to False, return an empty string
+            self.examples = ""
+
     async def run_async(
         self, 
         text: str, 
