@@ -2,6 +2,11 @@
 
 This library creates the end-to-end pipeline for GraphRAG, from the creation of the knowledge graph to the retrieval with RAG + graph capabilities.
 
+General references:
+1. [Neo4j GraphRAG Python library user guide](https://neo4j.com/docs/neo4j-graphrag-python/current/index.html).
+2. [Neo4j GraphRAG Python library API documentation](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html).
+3. The implementation of this module is also inspired on (and, in many cases, builds upon) the [examples from the `neo4j-graphrag-python` library](https://github.com/neo4j/neo4j-graphrag-python/tree/main/examples).
+
 # Building the knowledge graph: `kg_builder` module
 
 ## Why we cannot use `SimpleKGPipeline` out of the box (for now)
@@ -152,7 +157,9 @@ Another alternative is to use a free (but not open-source) embedding model, like
 
 # Indexing the knowledge graph: `kg_indexer` module
 
-Indexing particular elements of the graph enables faster queries over those elements. In the use case of GraphRAG, indexing the text embeddings or the text itself speeds up the process of information retrieval. 
+Indexing particular elements of the graph enables faster queries over those elements. In the use case of GraphRAG, indexing the text embeddings or the text itself speeds up the process of information retrieval.
+- Vector (embedding) indexes are needed for those retrievers which exploit the numerical representation of the ingested data (text) in order to find the most relevant information that answers a query.
+- Text indexes, on the other hand, are useful for those retrievers which explore the actual text of the ingested data in order to answer a query with the information contained in a knowledge graph.
 
 References:
 1. [User guide of `graphrag-neo4j` on database operations](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#db-operations).
@@ -161,7 +168,6 @@ References:
 # Retrieving information from the knowledge graph: `retriever` module
 
 It is at this stage that the advantages of GraphRAG can be exploited, by making use of the generated text embeddings as well as the possibility of traversing the graph and finding relevant information related to a document.
-
 
 References:
 1. Essential user guide for understanding how to structure of the retriever: [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#)
