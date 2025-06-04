@@ -25,7 +25,7 @@ Main steps behind the KG construction pipeline (source: [User Guide: Knowledge G
 > - **Knowledge Graph writer**: save the identified entities and relations.
 > - **Entity resolver**: merge similar entities into a single node. Can be integrated in the pipeline or applied ex-post, once the knowledge graph has already been created.
 
-![alt text](kg_builder_pipeline.png)
+![](kg_builder_pipeline.png)
 
 User guides (essential to understand how to create the pipeline and maintain it):
 1. [User Guide: Knowledge Graph Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)
