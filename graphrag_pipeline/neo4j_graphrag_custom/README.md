@@ -169,7 +169,16 @@ References:
 
 It is at this stage that the advantages of GraphRAG can be exploited, by making use of the generated text embeddings as well as the possibility of traversing the graph and finding relevant information related to a document.
 
+| Retriever                 | Description                                                                                                                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **VectorRetriever**       | Performs a similarity search based on a Neo4j vector index and a query text or vector. Returns the matched node and similarity score.                                                                                                                         |
+| **VectorCypherRetriever** | Performs a similarity search based on a Neo4j vector index and a query text or vector. The returned results can be configured through a retrieval query parameter executed after the index search. Can be used to fetch more context around the matched node. |
+| **HybridRetriever**       | Uses both a vector and a full-text index in Neo4j.                                                                                                                                                                                                            |
+| **HybridCypherRetriever** | Same as HybridRetriever with a retrieval query similar to VectorCypherRetriever.                                                                                                                                                                              |
+| **Text2Cypher**           | Translates the user question into a Cypher query to be run against a Neo4j database (or Knowledge Graph). The results are then passed to the LLM to generate the final answer.                                                                                |
+
+
 References:
-1. Essential user guide for understanding how to structure of the retriever: [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#)
+1. Essential user guide for understanding how to structure of the retriever: [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#). Main useful information is from the ["Retriever Configuration"](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#retriever-configuration) section onwards. 
 2. [API documentation on the available retrievers](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#retrievers).
 3. [API documentation on GraphRAG](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#graphrag) (used to generate the final output).
