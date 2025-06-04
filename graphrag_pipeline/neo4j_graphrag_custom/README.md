@@ -147,3 +147,23 @@ In the case of news articles, this sequence length can be more than enough to ca
 - `all-mpnet-base-v2`. According to the authors of the library, this model "provides the best quality". It has a maximum sequence length of 384 tokens.
 - `all-distilroberta-v1`. 1.5 times faster than `all-mpnet-base-v2`, and with a larger maximum sequence length (512 tokens).
 - `all-MiniLM-L6-v2`. "5 times faster [than `all-mpnet-base-v2`] and still offers good quality". Maximum sequence length of 256 tokens.
+
+Another alternative is to use a free (but not open-source) embedding model, like Google's [`text-embedding-004`](https://ai.google.dev/gemini-api/docs/models#text-embedding), which can take up to 2,048 input tokens and is [free of charge](https://ai.google.dev/gemini-api/docs/pricing) (but with a rate limit of 1,500 requests per minute). 
+
+# Indexing the knowledge graph: `kg_indexer` module
+
+Indexing particular elements of the graph enables faster queries over those elements. In the use case of GraphRAG, indexing the text embeddings or the text itself speeds up the process of information retrieval. 
+
+References:
+1. [User guide of `graphrag-neo4j` on database operations](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#db-operations).
+2. [API documentation of `graphrag-neo4j` on database interaction](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#database-interaction).
+
+# Retrieving information from the knowledge graph: `retriever` module
+
+It is at this stage that the advantages of GraphRAG can be exploited, by making use of the generated text embeddings as well as the possibility of traversing the graph and finding relevant information related to a document.
+
+
+References:
+1. Essential user guide for understanding how to structure of the retriever: [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#)
+2. [API documentation on the available retrievers](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#retrievers).
+3. [API documentation on GraphRAG](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#graphrag) (used to generate the final output).
