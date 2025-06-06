@@ -4,14 +4,12 @@
             "text"
         ],
         "search_params": {
-            "query_text": "Which have been the most pressing security-related issues in Sudan in the last year? What are the future prospects for the country considering the current situation?",
             "top_k": 5
         }
     },
     "VectorCypherRetriever_config": {
         "retrieval_query": "//1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n//2) collect relationships and text chunks\nWITH collect(DISTINCT chunk) AS chunks,\n collect(DISTINCT rel) AS rels\n\n//3) format and return context\nRETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') + '\\n\\n=== kg_rels ===\\n' +\n apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info",
         "search_params": {
-            "query_text": "Which have been the most pressing security-related issues in Sudan in the last year? What are the future prospects for the country considering the current situation?",
             "top_k": 5
         }
     },
@@ -20,7 +18,6 @@
             "text"
         ],
         "search_params": {
-            "query_text": "Which have been the most pressing security-related issues in Sudan in the last year? What are the future prospects for the country considering the current situation?",
             "top_k": 5,
             "ranker": "linear",
             "alpha": 0.5
@@ -29,14 +26,13 @@
     "HybridCypherRetriever_config": {
         "retrieval_query": "//1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n//2) collect relationships and text chunks\nWITH collect(DISTINCT chunk) AS chunks,\n collect(DISTINCT rel) AS rels\n\n//3) format and return context\nRETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') + '\\n\\n=== kg_rels ===\\n' +\n apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info",
         "search_params": {
-                "query_text": "Which have been the most pressing security-related issues in Sudan in the last year? What are the future prospects for the country considering the current situation?",
                 "top_k": 5,
                 "ranker": "linear",
                 "alpha": 0.5
         }
     },
     "Text2CypherRetriever_config": {
-        "llm":{
+        "llm_config":{
             "model_name": "gemini-2.0-flash",
             "model_params": {
                 "temperature": 0.0
@@ -50,7 +46,6 @@
             ]
         },
         "search_params": {
-            "query_text": "Which have been the most pressing security-related issues in Sudan in the last year? What are the future prospects for the country considering the current situation?"
         }
     }
 }
