@@ -165,7 +165,7 @@ References:
 1. [User guide of `graphrag-neo4j` on database operations](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#db-operations).
 2. [API documentation of `graphrag-neo4j` on database interaction](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#database-interaction).
 
-# Retrieving information from the knowledge graph: `retriever` module
+# Retrieving information from the knowledge graph: using retrievers
 
 It is at this stage that the advantages of GraphRAG can be exploited, by making use of the generated text embeddings as well as the possibility of traversing the graph and finding relevant information related to a document.
 
@@ -175,7 +175,7 @@ It is at this stage that the advantages of GraphRAG can be exploited, by making 
 | **VectorCypherRetriever** | Performs a similarity search based on a Neo4j vector index and a query text or vector. The returned results can be configured through a retrieval query parameter executed after the index search. Can be used to fetch more context around the matched node. |
 | **HybridRetriever**       | Uses both a vector and a full-text index in Neo4j.                                                                                                                                                                                                            |
 | **HybridCypherRetriever** | Same as HybridRetriever with a retrieval query similar to VectorCypherRetriever.                                                                                                                                                                              |
-| **Text2Cypher**           | Translates the user question into a Cypher query to be run against a Neo4j database (or Knowledge Graph). The results are then passed to the LLM to generate the final answer.                                                                                |
+| **Text2Cypher**           | Translates the user question into a Cypher query to be run against a Neo4j database (or Knowledge Graph). The results are then passed to the LLM to generate the final answer. Note that, in this case, no similarity-based or full-text based method is used to retrieve information.                                                                                 |
 
 
 References:

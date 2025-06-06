@@ -58,15 +58,15 @@ class KGRetriever:
         embedder: Optional[Embedder] = None,
         return_properties: Optional[List[str]] = None,
         result_formatter: Optional[Callable[[neo4j.Record], RetrieverResultItem]] = None,
-        neo4j_database: Optional[str] = None
+        neo4j_database: Optional[str] = 'neo4j'
     ) -> "KGRetriever":
         """
-        Create a KGRetriever with a VectorRetriever.
+        Create a KGRetriever with a VectorRetriever. Provides retrieval method using vector search over embeddings. If an embedder is provided, it needs to have the required Embedder type.
         
         Args:
             driver: The Neo4j Python driver.
             index_name: Vector index name.
-            embedder: Optional embedder object to embed query text.
+            embedder: Optional embedder object to embed the query text.
             return_properties: Optional list of node properties to return.
             result_formatter: Optional custom function to transform a neo4j.Record to a RetrieverResultItem.
             neo4j_database: Optional name of the Neo4j database.
@@ -92,10 +92,10 @@ class KGRetriever:
         retrieval_query: str,
         embedder: Optional[Embedder] = None,
         result_formatter: Optional[Callable[[neo4j.Record], RetrieverResultItem]] = None,
-        neo4j_database: Optional[str] = None
+        neo4j_database: Optional[str] = 'neo4j'
     ) -> "KGRetriever":
         """
-        Create a KGRetriever with a VectorCypherRetriever.
+        Create a KGRetriever with a VectorCypherRetriever. Provides retrieval method using vector similarity augmented by a Cypher query. This retriever builds on VectorRetriever. If an embedder is provided, it needs to have the required Embedder type.
         
         Args:
             driver: The Neo4j Python driver.
@@ -127,10 +127,10 @@ class KGRetriever:
         embedder: Optional[Embedder] = None,
         return_properties: Optional[List[str]] = None,
         result_formatter: Optional[Callable[[neo4j.Record], RetrieverResultItem]] = None,
-        neo4j_database: Optional[str] = None
+        neo4j_database: Optional[str] = 'neo4j'
     ) -> "KGRetriever":
         """
-        Create a KGRetriever with a HybridRetriever.
+        Create a KGRetriever with a HybridRetriever. Provides retrieval method using combination of vector search over embeddings and fulltext search. If an embedder is provided, it needs to have the required Embedder type.
         
         Args:
             driver: The Neo4j Python driver.
@@ -151,7 +151,7 @@ class KGRetriever:
             embedder=embedder,
             return_properties=return_properties,
             result_formatter=result_formatter,
-            neo4j_database=neo4j_database
+            neo4j_database= neo4j_database
         )
         return cls(RetrieverType.HYBRID, retriever)
     
@@ -164,10 +164,10 @@ class KGRetriever:
         retrieval_query: str,
         embedder: Optional[Embedder] = None,
         result_formatter: Optional[Callable[[neo4j.Record], RetrieverResultItem]] = None,
-        neo4j_database: Optional[str] = None
+        neo4j_database: Optional[str] = 'neo4j'
     ) -> "KGRetriever":
         """
-        Create a KGRetriever with a HybridCypherRetriever.
+        Create a KGRetriever with a HybridCypherRetriever. Provides retrieval method using combination of vector search over embeddings and fulltext search, augmented by a Cypher query. This retriever builds on HybridRetriever. If an embedder is provided, it needs to have the required Embedder type.
         
         Args:
             driver: The Neo4j Python driver.
@@ -201,10 +201,10 @@ class KGRetriever:
         examples: Optional[List[str]] = None,
         result_formatter: Optional[Callable[[neo4j.Record], RetrieverResultItem]] = None,
         custom_prompt: Optional[str] = None,
-        neo4j_database: Optional[str] = None
+        neo4j_database: Optional[str] = 'neo4j'
     ) -> "KGRetriever":
         """
-        Create a KGRetriever with a Text2CypherRetriever.
+        Create a KGRetriever with a Text2CypherRetriever. Allows for the retrieval of records from a Neo4j database using natural language. Converts a user’s natural language query to a Cypher query using an LLM, then retrieves records from a Neo4j database using the generated Cypher query.
         
         Args:
             driver: The Neo4j Python driver.
