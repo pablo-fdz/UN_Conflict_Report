@@ -68,7 +68,7 @@ class CustomKGPipeline:
                           If None or 'create_schema' is False, will extract without schema.
             prompt_template: Custom prompt template for entity extraction
             text_splitter_config: Optional, text splitter configuration dictionary. Defaults to FixedSizeSplitter with chunk size 100000 and overlap 1000.
-            resolver: Optional, entity resolver instance for resolving entities in the graph. Can be an instance of EntityResolver (like SinglePropertyExactMatchResolver) or BasePropertySimilarityResolver (like SpaCySemanticMatchResolver).
+            resolver: Optional, entity resolver instance for resolving entities in the graph. Can be an instance of EntityResolver (like SinglePropertyExactMatchResolver) or BasePropertySimilarityResolver (like SpaCySemanticMatchResolver). If None, no entity resolution will be performed.
             examples_config: Configuration for examples. If provided and 'pass_examples' is True, will use few-shot learning with provided examples.
                            If None or 'pass_examples' is False, no examples will be used.
             on_error: Error handling strategy for entity extraction ("IGNORE" or "RAISE")

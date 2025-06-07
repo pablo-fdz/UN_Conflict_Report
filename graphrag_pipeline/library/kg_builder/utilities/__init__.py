@@ -1,2 +1,3 @@
 from .build_schema_from_config import build_schema_from_config
 from .gemini_llm import GeminiLLM
+from .ensure_spacy_model import ensure_spacy_model

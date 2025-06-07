@@ -1,17 +1,14 @@
 {
     "acled": {
-      "enabled": true,
-      "output_path": "data/acled/",
-      "api_key_env": "ACLED_API_KEY"
+      "ingestion": true,
+      "include_in_kg": true
     },
     "google_news": {
-      "enabled": true,
-      "search_terms": ["Sudan", "conflict"],
-      "output_path": "data/google_news/"
+      "ingestion": true,
+      "include_in_kg": true
     },
     "factal": {
-      "enabled": true,
-      "output_path": "data/factal/",
-      "api_key_env": "FACTAL_API_KEY"
+      "ingestion": true,
+      "include_in_kg": true
     }
 }

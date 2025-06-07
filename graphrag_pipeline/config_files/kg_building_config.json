@@ -180,5 +180,34 @@
                 }
             }
         ]
+    },
+    "entity_resolution_config": {
+        "use_resolver": true,
+        "resolver": "SpaCySemanticMatchResolver",
+        "SinglePropertyExactMatchResolver_config": {
+            "filter_query": null,
+            "resolve_property": "name"
+        },
+        "FuzzyMatchResolver_config": {
+            "filter_query": "WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}",
+            "resolve_properties": ["name"],
+            "similarity_threshold": 0.8
+        },
+        "SpaCySemanticMatchResolver_config": {
+            "filter_query": null,
+            "resolve_properties": ["name"],
+            "spacy_model": "en_core_web_lg",
+            "similarity_threshold": 0.8
+        },
+        "use_ex_post_resolver": false,
+        "ex_post_resolver": "SinglePropertyExactMatchResolver"
+    },
+    "debug_config": {
+        "enable_logging": true
+    },
+    "dev_settings": {
+        "on_error": "RAISE",
+        "batch_size": 1000,
+        "max_concurrency": 5
     }
 }
