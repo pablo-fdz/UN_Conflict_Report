@@ -1,6 +1,15 @@
+import os
+import sys
 import asyncio
 import polars as pl
-from kg_construction_pipeline import KGConstructionPipeline
+from .kg_construction_pipeline import KGConstructionPipeline
+
+# Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
+# modules in parent directory)
+script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
+parent_dir = os.path.dirname(os.path.dirname(script_dir))  # Get the parent directory (graphrag_pipeline)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
 
 async def main():
 
