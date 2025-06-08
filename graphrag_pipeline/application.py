@@ -299,13 +299,3 @@ class Application:
             ]
         )
         self.logger = logging.getLogger(self.name)
-        
-        # logging.basicConfig(
-        #     level=logging.DEBUG,
-        #     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        #     handlers=[
-        #         logging.FileHandler(os.path.join(self.graphrag_pipeline_dir, 'logs', 'application.log'))
-        #         # logging.StreamHandler()  # Uncomment this line to also log to the console
-        #     ]
-        # )
-        # self.logger = logging.getLogger(self.name)
