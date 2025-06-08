@@ -2,7 +2,7 @@ import os
 import sys
 import asyncio
 import polars as pl
-from kg_construction_pipeline import KGConstructionPipeline
+from .kg_construction_pipeline import KGConstructionPipeline
 
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
 # modules in parent directory)

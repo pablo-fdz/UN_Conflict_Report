@@ -135,19 +135,18 @@ class Application:
 
             # ---------- 1. Build from data sources specified in the configuration file ----------
 
-            try:
-                for data_source, config in self.data_config.items():  # Iterate over all data sources in the config file
-                    if config['include_in_kg'] is True:  # If the KG building is enabled for the data source, build from its data
-                        
-                        self.logger.info(f"Building KG from data source: {data_source}")
-                        
-                        # Set the path to the appropriate script
-                        script_path = f"pipeline.02_kg_building.{data_source}_kg_building"
-                        
-                        # Ensure the script path is valid
-                        if not importlib.util.find_spec(script_path):
-                            self.logger.error(f"KG building module for {data_source} not found.")
-                            continue  # Skip to the next data source if the module is not found
+            for data_source, config in self.data_config.items():  # Iterate over all data sources in the config file
+                if config['include_in_kg'] is True:  # If the KG building is enabled for the data source, build from its data
+                    
+                    self.logger.info(f"Building KG from data source: {data_source}")
+                    
+                    # Set the path to the appropriate script
+                    script_path = f"pipeline.02_kg_building.{data_source}_kg_building"
+                    
+                    # Ensure the script path is valid
+                    if not importlib.util.find_spec(script_path):
+                        self.logger.error(f"KG building module for {data_source} not found.")
+                        continue  # Skip to the next data source if the module is not found
                     
                     # Execute the script directly as if it was run with python -m in the terminal
                     try:
@@ -156,19 +155,44 @@ class Application:
                         self.logger.info(f"Successfully executed script for {data_source}")
                     except Exception as e:
                         self.logger.error(f"Error executing script for {data_source}: {str(e)}")
+                else:
+                    self.logger.debug(f"Skipping {data_source} - not enabled for KG building")
+                    continue  # Skip to the next data source if KG building is not enabled
 
-                    else:
-                        continue  # Skip to the next data source if ingestion is not enabled
+            # try:
+            #     for data_source, config in self.data_config.items():  # Iterate over all data sources in the config file
+            #         if config['include_in_kg'] is True:  # If the KG building is enabled for the data source, build from its data
+                        
+            #             self.logger.info(f"Building KG from data source: {data_source}")
+                        
+            #             # Set the path to the appropriate script
+            #             script_path = f"pipeline.02_kg_building.{data_source}_kg_building"
+                        
+            #             # Ensure the script path is valid
+            #             if not importlib.util.find_spec(script_path):
+            #                 self.logger.error(f"KG building module for {data_source} not found.")
+            #                 continue  # Skip to the next data source if the module is not found
+                    
+            #         # Execute the script directly as if it was run with python -m in the terminal
+            #         try:
+            #             self.logger.info(f"Executing script: {script_path}")
+            #             runpy.run_module(script_path, run_name="__main__")
+            #             self.logger.info(f"Successfully executed script for {data_source}")
+            #         except Exception as e:
+            #             self.logger.error(f"Error executing script for {data_source}: {str(e)}")
+
+            #         else:
+            #             continue  # Skip to the next data source if ingestion is not enabled
             
-            except ImportError as e:
-                self.logger.error(f"Could not import data ingestion module: {str(e)}")
+            # except ImportError as e:
+            #     self.logger.error(f"Could not import data ingestion module: {str(e)}")
             
             # ---------- 2. Build from sample data ----------
             
             # Build KG with sample data if specified in the configuration, for 
             # development purposes. This is useful for testing and development without
             # needing to run the full data ingestion and KG building process.
-            if self.build_kg['dev_settings']['build_with_sample_data'] == True:
+            if self.build_config['dev_settings']['build_with_sample_data'] == True:
 
                 self.logger.info("Building KG with sample data for development purposes")
 

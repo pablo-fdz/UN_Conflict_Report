@@ -1,14 +1,14 @@
 {
     "acled": {
-      "ingestion": true,
-      "include_in_kg": true
+      "ingestion": false,
+      "include_in_kg": false
     },
     "factal": {
-      "ingestion": true,
-      "include_in_kg": true
+      "ingestion": false,
+      "include_in_kg": false
     },
     "google_news": {
-      "ingestion": true,
-      "include_in_kg": true
+      "ingestion": false,
+      "include_in_kg": false
     }
 }
