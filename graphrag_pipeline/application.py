@@ -2,8 +2,7 @@ import logging
 import importlib
 import os
 import sys
-from pathlib import Path
-import asyncio
+from datetime import datetime
 import json
 import runpy  # For running Python scripts dynamically
 
@@ -284,14 +283,29 @@ class Application:
 
     def __init_logging(self):
         """
-        Initializes logging for the application.
+        Initializes logging for the application. Hybrid approach that logs to a 
+        "current" log file and a timestamped log file in the logs directory.
         """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Create a timestamp for the log file
+        logs_dir = os.path.join(self.graphrag_pipeline_dir, 'logs')
+        os.makedirs(logs_dir, exist_ok=True)  # Ensure the logs directory exists
+        
         logging.basicConfig(
             level=logging.DEBUG,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(os.path.join(self.graphrag_pipeline_dir, 'logs', 'application.log')),
-                logging.StreamHandler()
+                logging.FileHandler(os.path.join(logs_dir, 'application.log'), mode='w'),  # Current log (replaced on each run)
+                logging.FileHandler(os.path.join(logs_dir, f'application_{timestamp}.log'))  # Timestamped log
             ]
         )
         self.logger = logging.getLogger(self.name)
+        
+        # logging.basicConfig(
+        #     level=logging.DEBUG,
+        #     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        #     handlers=[
+        #         logging.FileHandler(os.path.join(self.graphrag_pipeline_dir, 'logs', 'application.log'))
+        #         # logging.StreamHandler()  # Uncomment this line to also log to the console
+        #     ]
+        # )
+        # self.logger = logging.getLogger(self.name)

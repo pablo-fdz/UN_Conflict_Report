@@ -1,6 +1,14 @@
 # Utilities
 import sys
 import os
+
+# Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
+# modules in parent directory)
+script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
+graphrag_pipeline_dir = os.path.dirname(script_dir)  # Get the parent directory (graphrag_pipeline)
+if graphrag_pipeline_dir not in sys.path:
+    sys.path.append(graphrag_pipeline_dir)
+
 import asyncio
 from dotenv import load_dotenv
 import os
@@ -11,13 +19,6 @@ from library.kg_indexer import KGIndexer
 
 # Neo4j and Neo4j GraphRAG imports
 import neo4j
-
-# Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
-# modules in parent directory)
-script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
-graphrag_pipeline_dir = os.path.dirname(script_dir)  # Get the parent directory (graphrag_pipeline)
-if graphrag_pipeline_dir not in sys.path:
-    sys.path.append(graphrag_pipeline_dir)
 
 async def main():
     """Main function to run the indexing pipeline."""
