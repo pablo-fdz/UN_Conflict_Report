@@ -199,13 +199,13 @@
             "spacy_model": "en_core_web_lg",
             "similarity_threshold": 0.8
         },
-        "use_ex_post_resolver": false,
         "ex_post_resolver": "SinglePropertyExactMatchResolver"
     },
     "debug_config": {
         "enable_logging": true
     },
     "dev_settings": {
+        "build_with_sample_data": true,
         "on_error": "RAISE",
         "batch_size": 1000,
         "max_concurrency": 5

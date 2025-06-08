@@ -45,8 +45,6 @@ class KGConstructionPipeline:
             load_dotenv(os.path.join(self.config_files_path, '.env'), override=True)
             
             # Load data and KG building configurations
-            with open(os.path.join(self.config_files_path, 'data_ingestion_config.json'), 'r') as f:
-                self.data_config = json.load(f)
             with open(os.path.join(self.config_files_path, 'kg_building_config.json'), 'r') as f:
                 self.build_config = json.load(f)
         

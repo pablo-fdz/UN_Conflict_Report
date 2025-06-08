@@ -3,11 +3,11 @@
       "ingestion": true,
       "include_in_kg": true
     },
-    "google_news": {
+    "factal": {
       "ingestion": true,
       "include_in_kg": true
     },
-    "factal": {
+    "google_news": {
       "ingestion": true,
       "include_in_kg": true
     }
