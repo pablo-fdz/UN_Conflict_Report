@@ -15,7 +15,6 @@ async def main():
 
     # ==================== 1. Load data ====================
 
-
     try:
         # Load data
         df_path = os.path.join(parent_dir, 'example_notebooks', 'sample_data', 'factal_single_topic_report-2025-05-01-2025-06-05.csv')
