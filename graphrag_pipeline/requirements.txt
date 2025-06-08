@@ -1,0 +1,11 @@
+polars==1.30.0
+RapidFuzz==3.13.0 
+spacy==3.8.7
+neo4j==5.28.1
+neo4j-graphrag==1.7.0
+"neo4j-graphrag[spacy, experimental, sentence-transformers, rapidfuzz]"
+google-genai==1.16.1
+python-dotenv==1.1.0
+langchain-google-genai==2.1.5
+ipywidgets==8.1.7
+tqdm==4.67.1
