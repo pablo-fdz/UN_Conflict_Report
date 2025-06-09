@@ -34,7 +34,7 @@ def parse_arguments():
     
     parser.add_argument(
         '--retrieval',
-        help='Space-separated countries for which to retrieve the knowledge graph and generate security reports. This argument can accept multiple values. GraphRAG is not executed if no countries are provided or if the argument is not used.',
+        help='Space-separated names of countries for which to retrieve the knowledge graph and generate security reports. This argument can accept multiple values. GraphRAG is not executed if no countries are provided or if the argument is not used.',
         nargs='*',  # Zero or more arguments can be provided
         default=[],  # Default is an empty list if no arguments are provided
         dest='graph_retrieval'

@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime
 import json
 import runpy  # For running Python scripts dynamically
+import subprocess  # For passing inputs to scripts as if in the command line
 from pathlib import Path
 
 class Application:

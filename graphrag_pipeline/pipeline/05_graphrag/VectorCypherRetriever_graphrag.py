@@ -104,7 +104,4 @@ async def main(country: str = None, output_directory: str = None):
 
 # Asyncio event loop to run the main function in a script
 if __name__ == "__main__":
-    import sys
-    country = sys.argv[1] if len(sys.argv) > 1 else None  # Get country from command line argument, if provided
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else None  # Get output directory from command line argument, if provided
-    result = asyncio.run(main(country=country, output_directory=output_dir))
+    result = asyncio.run(main(country=None, output_directory=None))  # Set to None for getting variables from environment variables

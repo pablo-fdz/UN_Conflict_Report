@@ -30,9 +30,9 @@ class GraphRAGConstructionPipeline:
     
         # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
         # modules in parent directory)
-        script_dir = Path(__file__).parent  # Get the directory where this script is located
-        graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
-        self.config_files_path = os.path.join(graphrag_pipeline_dir, 'config_files')  # Find path to config_files folder
+        self.script_dir = Path(__file__).parent  # Get the directory where this script is located
+        self.graphrag_pipeline_dir = self.script_dir.parent.parent  # Get the graphrag_pipeline directory
+        self.config_files_path = os.path.join(self.graphrag_pipeline_dir, 'config_files')  # Find path to config_files folder
         self._load_configs()
         self._setup_credentials()
         
@@ -240,7 +240,7 @@ class GraphRAGConstructionPipeline:
 
         # Get the parent directory of graphrag_pipeline_dir (outside the program
         # files)
-        parent_dir = os.path.dirname(self.graphrag_pipeline_dir)
+        parent_dir = self.graphrag_pipeline_dir.parent  
         
         # Create the base reports directory
         reports_base = os.path.join(parent_dir, 'reports')
