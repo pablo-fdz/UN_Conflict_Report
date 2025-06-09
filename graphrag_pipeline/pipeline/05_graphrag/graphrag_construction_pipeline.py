@@ -281,7 +281,7 @@ class GraphRAGConstructionPipeline:
         # Build header
         title = f"Security Report"
         if country:
-            title += f" - {country}"
+            title += f" - {country}: Metadata"
             
         markdown_lines = [
             f"# {title}",
@@ -300,8 +300,6 @@ class GraphRAGConstructionPipeline:
         markdown_lines.extend([
             "",
             "---",
-            "",
-            "## Report Content",
             "",
             answer,
             "",
