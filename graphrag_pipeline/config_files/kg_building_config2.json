@@ -1,196 +1,143 @@
 {
-  "text_splitter_config": {
-    "chunk_size": 100000,
-    "chunk_overlap": 1000
-  },
-  "embedder_config": {
-    "model_name": "all-MiniLM-L6-v2",
-    "model_params": {}
-  },
-  "llm_config": {
-    "model_name": "gemini-2.5-pro-preview-05-06",
-    "model_params": {
-      "temperature": 0.0
+    "text_splitter_config": {
+        "chunk_size": 100000,
+        "chunk_overlap": 1000
+    },
+    "embedder_config": {
+        "model_name": "all-MiniLM-L6-v2",
+        "model_params": {
+        }
+    },
+    "llm_config": {
+        "model_name": "gemini-1.5-flash",
+        "model_params": {
+            "temperature": 0.0
+        }
+    },
+    "schema_config": {
+        "create_schema": true,
+        "nodes": [
+            {"label": "Event", 
+            "description": "Significant occurrences of the input text, such as conflicts, elections, coups, attacks or any other relevant information.",
+            "properties": [
+                {"name": "name", "type": "STRING"},
+                {"name": "date", "type": "DATE", "description": "Date in the 'Published date' column"},
+                {"name": "type", "type": "STRING", "description": "Type of event, e.g., Conflict, Attack, Election."},
+                {"name": "severity", "type": "INTEGER", "description": "Severity of the event on a scale from 1 to 5, where 1 is low and 5 is high, taken directly from 'Severity' column."},
+                {"name": "description", "type": "STRING", "description": "A description of the event taken directly from the 'Text' column."}
+            ]},
+            
+            {"label": "Actor", 
+            "description": "All kinds of entities mentioned, such as terrorist groups, political parties, military, individuals, etc.",
+            "properties": [
+                {"name": "name", "type": "STRING"},
+                {"name": "type", "type": "STRING", "description": "Type of actor: civilian, military, government, media, international organization, etc."}
+            ]},
+            
+            {"label": "Location", 
+            "description": "For each location node, create three properties: 'name', 'admin 1', and 'country'. These should be populated with the values from the DataFrame columns 'Name', 'Admin1', and 'Country' respectively. If one of the properties is unknown, put 'unknown'.",
+            "properties": [
+                {"name": "name", "type": "STRING"},
+                {"name": "admin 1", "type": "STRING"},
+                {"name": "country", "type": "STRING"}
+            ]}
+            
+        ],
+        "edges": [
+            {"label": "HAPPENED_IN", 
+            "properties": [
+                {"name": "date", "type": "DATE", "description": "Date when the event took place."}
+            ],
+            "description": "Indicates where (geographically) an event took place."},
+
+            {"label": "PARTICIPATED_IN", 
+            "description": "Actor or country's involvement in an event",
+            "properties": [
+                {"name": "role", "type": "STRING", "description": "Role of the actor in the event: victim, perpetrator, participant, etc."},
+                {"name": "date", "type": "DATE", "description": "Date when the event took place."},
+                {"name": "severity", "type": "INTEGER", "description": "Severity of the event on a scale from 1 to 5, where 1 is low and 5 is high, taken directly from 'Severity' column."}
+            ]},
+            
+            {"label": "IS_FROM", 
+            "description": "Physical location of actors within countries"},
+            
+            {"label": "IS_WITHIN",
+            "description": "Indicates that a geographical location is part of a larger geographical entity, such as a city being within a country, a first-level territorial division being within a country or a building being within a city."
+            }
+        ],
+        "suggest_pattern": true,
+        "triplets": [
+
+            ["Event", "HAPPENED_IN", "Location"],
+            
+            ["Actor", "PARTICIPATED_IN", "Event"],
+            ["Location", "PARTICIPATED_IN", "Event"],
+
+            ["Location", "IS_WITHIN", "Location"]
+        ],
+        "enforce_schema": "NONE"
+    },
+    "prompt_template_config": {
+        "use_default": false,
+        "template": "You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph that will be used for creating security reports for different countries.\n\nExtract the entities (nodes) from the following Input text.\nAlso extract the relationships between these nodes. The relationship direction goes from the start node to the end node.\n\nReturn result as JSON using the following format:\n{{\"nodes\": [ {{\"id\": \"0\", \"label\": \"node label like Actor, Event or Location\", \"properties\": {{\"name\": \"name of entity\" }} }}],\n\"relationships\": [{{\"label\": \"TYPE_OF_RELATIONSHIP\", \"start_node_id\": \"0\", \"end_node_id\": \"1\", \"properties\": {{\"details\": \"Description of the relationship\"}} }}] }}\n\n- Use only the information from the Input text. Do not add any additional information.\n- Make sure to create as many nodes and relationships as needed to offer rich context for generating a security-related knowledge graph.\n- An AI knowledge assistant must be able to read this graph and immediately understand the context to inform detailed research questions.\n- Multiple documents will be ingested from different sources and we are using this property graph to connect information, so make sure entity types are fairly general.\n- Do not create edges between nodes and chunks when the relationship is not clear enough.\n\nUse only the following nodes and relationships (if provided):\n{schema}\n\nAssign a unique ID (string) to each node, and reuse it to define relationships.\nDo respect the source and target node types for relationship and the relationship direction.\n\nDo not return any additional information other than the JSON in it.\n\nExamples:\n{examples}\n\nInput text:\n{text}"
+    },
+    "examples_config": {
+        "pass_examples": true,
+        "examples": [
+            {
+                "input_text": "Sudanese government claims Wednesday RSF drone strikes on El Khawi, West Kordofan, and Al-Dabaibat, South Kordofan, killed eight and two civilians, respectively",
+                "schema": {
+                    "nodes": [
+                        {"id": "0", "label": "Event", "properties": {"name": "drone strike", "date": "2025-05-31", "type": "Attack", "severity": 3, "description": "RSF drone strikes on West and South Kordofan, ten civilians killed."}},
+                        {"id": "1", "label": "Actor", "properties": {"name": "RSF", "type": "military"}},
+                        {"id": "2", "label": "Actor", "properties": {"name": "civilians", "type": "civilian"}},
+                        {"id": "3", "label": "Location", "properties": {"name": "El Khawi", "admin 1": "West Kordofan", "country": "Sudan"}},
+                        {"id": "4", "label": "Location", "properties": {"name": "Al-Dabaibat", "admin 1": "South Kordofan", "country": "Sudan"}},
+                        {"id": "5", "label": "Location", "properties": {"name": "West Kordofan", "admin 1": "West Kordofan", "country": "Sudan"}},
+                        {"id": "6", "label": "Location", "properties": {"name": "South Kordofan", "admin 1": "South Kordofan", "country": "Sudan"}},
+                        {"id": "7", "label": "Location", "properties": {"name": "Sudan", "admin 1": "Sudan", "country": "Sudan"}}
+                    ],
+                    "relationships": [
+                        {"type": "HAPPENED_IN", "start_node_id": "0", "end_node_id": "3", "properties": {"date": "2025-05-31"}},
+                        {"type": "HAPPENED_IN", "start_node_id": "0", "end_node_id": "4", "properties": {"date": "2025-05-31"}},
+                        {"type": "PARTICIPATED_IN", "start_node_id": "1", "end_node_id": "0", "properties": {"role": "perpetrator", "date": "2025-05-31", "severity": 3}},
+                        {"type": "PARTICIPATED_IN", "start_node_id": "2", "end_node_id": "0", "properties": {"role": "victim", "date": "2025-05-31", "severity": 3}},
+                        {"type": "IS_WITHIN", "start_node_id": "3", "end_node_id": "5"},
+                        {"type": "IS_WITHIN", "start_node_id": "4", "end_node_id": "6"},
+                        {"type": "IS_WITHIN", "start_node_id": "5", "end_node_id": "7"},
+                        {"type": "IS_WITHIN", "start_node_id": "6", "end_node_id": "7"}
+                    ]
+                }
+            }
+        ]
+    },
+    "entity_resolution_config": {
+        "use_resolver": true,
+        "resolver": "SpaCySemanticMatchResolver",
+        "SinglePropertyExactMatchResolver_config": {
+            "filter_query": null,
+            "resolve_property": ["name", "type", "admin 1"]
+        },
+        "FuzzyMatchResolver_config": {
+            "filter_query": "WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}",
+            "resolve_properties": ["name"],
+            "similarity_threshold": 0.8
+        },
+        "SpaCySemanticMatchResolver_config": {
+            "filter_query": null,
+            "resolve_properties": ["name"],
+            "spacy_model": "en_core_web_lg",
+            "similarity_threshold": 0.8
+        },
+        "ex_post_resolver": "SinglePropertyExactMatchResolver"
+    },
+    "debug_config": {
+        "enable_logging": true
+    },
+    "dev_settings": {
+        "build_with_sample_data": true,
+        "on_error": "RAISE",
+        "batch_size": 1000,
+        "max_concurrency": 5
     }
-  },
-  "schema_config": {
-    "create_schema": true,
-    "nodes": [
-      {
-        "label": "Event",
-        "description": "Significant occurrences of the input text, such as conflicts, elections, coups, attacks or any other relevant information.",
-        "properties": [
-          { "name": "name", "type": "STRING" },
-          { "name": "start_date", "type": "DATE", "description": "Date when the event started or when the information was first reported." },
-          { "name": "end_date", "type": "DATE", "description": "Date when the event ended or when the information was last updated." },
-          { "name": "type", "type": "STRING", "description": "Type of event, e.g., Conflict, Attack, Election." }
-        ]
-      },
-      {
-        "label": "Actor",
-        "description": "All kinds of entities mentioned, such as terrorist groups, political parties, military, individuals, etc.",
-        "properties": [
-          { "name": "name", "type": "STRING" },
-          { "name": "type", "type": "STRING", "description": "Type of actor, e.g., civilian, military, government, international organization, etc." }
-        ]
-      },
-      {
-        "label": "Country",
-        "description": "Nation states mentioned in the story, like the United States, Sudan, Afghanistan, etc. Do not include territories within countries in this category.",
-        "properties": [
-          { "name": "location", "type": "STRING", "description": "Name of the country. For countries, this is the same as 'adm1' and 'country'." },
-          { "name": "adm1", "type": "STRING", "description": "Name of the country. For countries, this is the same as 'location' and 'country'." },
-          { "name": "country", "type": "STRING", "description": "Name of the country." }
-        ]
-      },
-      {
-        "label": "ADM1",
-        "description": "First-level administrative division within countries, like US states (e.g., California), provinces in Iran (e.g., Semnan) or regions in Ghana (e.g., Ashanti).",
-        "properties": [
-          { "name": "location", "type": "STRING", "description": "Name of the ADM1 division." },
-          { "name": "adm1", "type": "STRING", "description": "Name of the ADM1 division." },
-          { "name": "country", "type": "STRING", "description": "Name of the country to which this ADM1 belongs." }
-        ]
-      },
-      {
-        "label": "Location",
-        "description": "Geographic locations more specific than national or ADM1 divisions, such as cities, towns, or sites (e.g., Kutum, Khartoum, or a refugee camp).",
-        "properties": [
-          { "name": "location", "type": "STRING", "description": "Name of the location (e.g., Kutum, Khartoum, etc.)" },
-          { "name": "adm1", "type": "STRING", "description": "Name of the first-level administrative division this location belongs to (e.g., North Darfur)." },
-          { "name": "country", "type": "STRING", "description": "Name of the country this location belongs to (e.g., Sudan)." }
-        ]
-      }
-    ],
-    "edges": [
-      { "label": "HAPPENED_IN", "description": "Indicates where (geographically) an event took place." },
-      {
-        "label": "CONFRONTED_WITH",
-        "description": "Negative connection between actors/territories and other actors/territories, such as conflicts, attacks, simple criticism (without violence) or other forms of confrontation.",
-        "properties": [
-          { "name": "type", "type": "STRING", "description": "Type of confrontation, e.g., conflict, attack, criticism, trade war, etc." },
-          { "name": "start_date", "type": "DATE", "description": "Date when the confrontation started." },
-          { "name": "end_date", "type": "DATE", "description": "Date when the confrontation ended or was last reported." }
-        ]
-      },
-      {
-        "label": "COOPERATED_WITH",
-        "description": "Cooperative (positive) relationship between actors/territories and other actors/territories, such as alliances, partnerships, or other forms of cooperation.",
-        "properties": [
-          { "name": "type", "type": "STRING", "description": "Type of cooperation, e.g., alliance, partnership, trade agreement, etc." },
-          { "name": "start_date", "type": "DATE", "description": "Date when the cooperation started." },
-          { "name": "end_date", "type": "DATE", "description": "Date when the cooperation ended or was last reported." }
-        ]
-      },
-      {
-        "label": "PARTICIPATED_IN",
-        "description": "Actor or country's involvement in an event",
-        "properties": [
-          { "name": "role", "type": "STRING", "description": "Role of the actor in the event, e.g., victim, perpetrator, participant, etc." }
-        ]
-      },
-      {
-        "label": "IS_FROM",
-        "description": "Physical location of actors within countries, first-level territorial divisions or locations",
-        "properties": [
-          { "name": "since", "type": "DATE", "description": "Date when the actor was first reported to be in this location." },
-          { "name": "until", "type": "DATE", "description": "Date when the actor was last reported to be in this location." }
-        ]
-      },
-      {
-        "label": "IS_WITHIN",
-        "description": "Indicates that a geographical location is part of a larger geographical entity, such as a city being within a country, a first-level territorial division being within a country or a building being within a city.",
-        "properties": [
-          { "name": "since", "type": "DATE", "description": "Date when the location was first reported to be within the larger geographical entity." },
-          { "name": "until", "type": "DATE", "description": "Date when the location was last reported to be within the larger geographical entity." }
-        ]
-      }
-    ],
-    "suggest_pattern": true,
-    "triplets": [
-      ["Event", "HAPPENED_IN", "Location"],
-      ["Event", "HAPPENED_IN", "ADM1"],
-      ["Event", "HAPPENED_IN", "Country"],
-      ["Actor", "CONFRONTED_WITH", "Actor"],
-      ["Actor", "CONFRONTED_WITH", "Country"],
-      ["Actor", "CONFRONTED_WITH", "ADM1"],
-      ["Actor", "CONFRONTED_WITH", "Location"],
-      ["Country", "CONFRONTED_WITH", "Actor"],
-      ["Country", "CONFRONTED_WITH", "Country"],
-      ["Country", "CONFRONTED_WITH", "ADM1"],
-      ["Country", "CONFRONTED_WITH", "Location"],
-      ["ADM1", "CONFRONTED_WITH", "Actor"],
-      ["ADM1", "CONFRONTED_WITH", "Country"],
-      ["ADM1", "CONFRONTED_WITH", "ADM1"],
-      ["ADM1", "CONFRONTED_WITH", "Location"],
-      ["Location", "CONFRONTED_WITH", "Actor"],
-      ["Location", "CONFRONTED_WITH", "Country"],
-      ["Location", "CONFRONTED_WITH", "ADM1"],
-      ["Location", "CONFRONTED_WITH", "Location"],
-      ["Actor", "COOPERATED_WITH", "Actor"],
-      ["Actor", "COOPERATED_WITH", "Country"],
-      ["Actor", "COOPERATED_WITH", "ADM1"],
-      ["Actor", "COOPERATED_WITH", "Location"],
-      ["Country", "COOPERATED_WITH", "Actor"],
-      ["Country", "COOPERATED_WITH", "Country"],
-      ["Country", "COOPERATED_WITH", "ADM1"],
-      ["Country", "COOPERATED_WITH", "Location"],
-      ["ADM1", "COOPERATED_WITH", "Actor"],
-      ["ADM1", "COOPERATED_WITH", "Country"],
-      ["ADM1", "COOPERATED_WITH", "ADM1"],
-      ["ADM1", "COOPERATED_WITH", "Location"],
-      ["Location", "COOPERATED_WITH", "Actor"],
-      ["Location", "COOPERATED_WITH", "Country"],
-      ["Location", "COOPERATED_WITH", "ADM1"],
-      ["Location", "COOPERATED_WITH", "Location"],
-      ["Actor", "PARTICIPATED_IN", "Event"],
-      ["Country", "PARTICIPATED_IN", "Event"],
-      ["ADM1", "PARTICIPATED_IN", "Event"],
-      ["Actor", "IS_FROM", "Country"],
-      ["Actor", "IS_FROM", "ADM1"],
-      ["Actor", "IS_FROM", "Location"],
-      ["ADM1", "IS_WITHIN", "Country"],
-      ["Location", "IS_WITHIN", "Country"],
-      ["Location", "IS_WITHIN", "ADM1"],
-      ["Location", "IS_WITHIN", "Location"]
-    ],
-    "enforce_schema": "NONE"
-  },
-  "prompt_template_config": {
-    "use_default": false,
-    "template": "You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph that will be used for creating security reports for different countries.\n\nExtract the entities (nodes) and specify their type from the following Input text.\nAlso extract the relationships between these nodes. The relationship direction goes from the start node to the end node.\n\nReturn result as JSON using the following format:\n{\"nodes\": [{\"id\": \"0\", \"label\": \"the type of entity\", \"properties\": {\"name\": \"name of entity\" }}],\n\"relationships\": [{\"type\": \"TYPE_OF_RELATIONSHIP\", \"start_node_id\": \"0\", \"end_node_id\": \"1\", \"properties\": {\"details\": \"Description of the relationship\"}}]}\n\n- Use only the information from the Input text. Do not add any additional information.\n- Make sure to create as many nodes and relationships as needed to offer rich context.\n- Use only the provided schema.\n\nInput text:\n{text}"
-  },
-  "examples_config": {
-    "pass_examples": false,
-    "examples": []
-  },
-  "entity_resolution_config": {
-    "use_resolver": true,
-    "resolver": "SpaCySemanticMatchResolver",
-    "SinglePropertyExactMatchResolver_config": {
-      "filter_query": null,
-      "resolve_property": "name"
-    },
-    "FuzzyMatchResolver_config": {
-      "filter_query": null,
-      "resolve_properties": ["name"],
-      "similarity_threshold": 0.8
-    },
-    "SpaCySemanticMatchResolver_config": {
-      "filter_query": null,
-      "resolve_properties": ["name"],
-      "spacy_model": "en_core_web_lg",
-      "similarity_threshold": 0.8
-    },
-    "use_ex_post_resolver": false,
-    "ex_post_resolver": "SinglePropertyExactMatchResolver"
-  },
-  "debug_config": {
-    "enable_logging": true
-  },
-  "dev_settings": {
-    "on_error": "RAISE",
-    "batch_size": 1000,
-    "max_concurrency": 5
-  }
 }
