@@ -1,14 +1,16 @@
 import sys
 import os
+from pathlib import Path
 
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
 # modules in parent directory)
-script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
-graphrag_pipeline_dir = os.path.dirname(os.path.dirname(script_dir))  # Get the parent directory (graphrag_pipeline)
+script_dir = Path(__file__).parent  # Get the directory where this script is located
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
 if graphrag_pipeline_dir not in sys.path:
     sys.path.append(graphrag_pipeline_dir)
 
 # Utilities
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 import json
@@ -28,8 +30,8 @@ class GraphRAGConstructionPipeline:
     
         # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
         # modules in parent directory)
-        script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
-        graphrag_pipeline_dir = os.path.dirname(os.path.dirname(script_dir))  # Get the parent directory (graphrag_pipeline)
+        script_dir = Path(__file__).parent  # Get the directory where this script is located
+        graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
         self.config_files_path = os.path.join(graphrag_pipeline_dir, 'config_files')  # Find path to config_files folder
         self._load_configs()
         self._setup_credentials()
@@ -85,6 +87,8 @@ class GraphRAGConstructionPipeline:
             self.fulltext_index_name = [index['name'] for index in existing_indexes if index['type'] == 'FULLTEXT'][0]
         except IndexError:
             raise ValueError("No vector and/or fulltext indexes found in the database. Please create the necessary indexes before running the GraphRAG pipeline.")
+
+        return self.embeddings_index_name, self.fulltext_index_name
 
     def _create_graphrag_pipeline(self, retriever: Retriever):
         """Create the main GraphRAG pipeline with all components."""
@@ -197,7 +201,7 @@ class GraphRAGConstructionPipeline:
         # Generate filename if not provided
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M")  # Generate timestamp up to minute detail
-            country_suffix = f"_{country.replace(' ', '_')}" if country else ""  # Replace spaces with underscores for country name
+            country_suffix = f"_{re.sub(r'[^\w\-]', '_', country)}" if country else ""  # Replace special characters with underscores for country name
             retriever_suffix = f"_{retriever_type}" if retriever_type else ""
             filename = f"security_report{country_suffix}{retriever_suffix}_{timestamp}.md"
         
@@ -244,7 +248,7 @@ class GraphRAGConstructionPipeline:
         # If country is specified, create a country-specific subdirectory
         if country:
             # Sanitize country name for filesystem
-            safe_country = country.replace(' ', '_')  # Replace spaces with underscores
+            safe_country = re.sub(r'[^\w\-]', '_', country)  # Replace any non-word characters with underscores
             country_path = os.path.join(reports_base, safe_country)
             return country_path
         else:

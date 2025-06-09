@@ -39,6 +39,14 @@ def parse_arguments():
         default=[],  # Default is an empty list if no arguments are provided
         dest='graph_retrieval'
     )
+
+    parser.add_argument(
+        '--output-dir',
+        help='Directory to save the generated reports. If not specified, uses default directory structure.',
+        type=str,
+        default=None,
+        dest='output_directory'
+    )
     
     return parser.parse_args()
 
@@ -51,7 +59,8 @@ def main():
         ingest_data=args.ingest_data,
         build_kg=args.build_kg,
         resolve_ex_post=args.resolve_ex_post,
-        graph_retrieval=args.graph_retrieval
+        graph_retrieval=args.graph_retrieval,
+        output_directory=args.output_directory
     )
     
     # Run the application

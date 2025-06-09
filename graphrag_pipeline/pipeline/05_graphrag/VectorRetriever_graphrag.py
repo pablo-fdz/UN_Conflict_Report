@@ -4,11 +4,12 @@ import asyncio
 from .graphrag_construction_pipeline import GraphRAGConstructionPipeline
 import neo4j
 import json
+from pathlib import Path
 
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
 # modules in parent directory)
-script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
-graphrag_pipeline_dir = os.path.dirname(os.path.dirname(script_dir))  # Get the parent directory (graphrag_pipeline)
+script_dir = Path(__file__).parent  # Get the directory where this script is located
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
 if graphrag_pipeline_dir not in sys.path:
     sys.path.append(graphrag_pipeline_dir)
 
@@ -24,6 +25,12 @@ async def main(country: str = None, output_directory: str = None):
         country (str): Country name to generate report for
         output_directory (str): Directory to save the report
     """
+
+    # Get arguments from environment variables if not provided directly
+    if country is None:
+        country = os.getenv('GRAPHRAG_COUNTRY')
+    if output_directory is None:
+        output_directory = os.getenv('GRAPHRAG_OUTPUT_DIR')
 
     # Set retriever type
     retriever_type = 'Vector'

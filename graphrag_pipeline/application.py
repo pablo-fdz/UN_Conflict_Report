@@ -2,9 +2,11 @@ import logging
 import importlib
 import os
 import sys
+import asyncio
 from datetime import datetime
 import json
 import runpy  # For running Python scripts dynamically
+from pathlib import Path
 
 class Application:
     """
@@ -16,7 +18,8 @@ class Application:
             ingest_data: bool = False,
             build_kg: bool = False,
             resolve_ex_post: bool = False,
-            graph_retrieval: list[str] = []
+            graph_retrieval: list[str] = [],
+            output_directory: str = None
         ):
         """
         Initializes the application with the provided parameters.
@@ -32,6 +35,8 @@ class Application:
                 Defaults to False (ex-post resolution is not enabled).
             graph_retrieval (list[str]): List of countries for which to do GraphRAG. 
                 Defaults to an empty list (GraphRAG is not performed, no report is generated).
+            output_directory (str): Directory to save the generated reports. Defaults
+                to None (reports saved in the default directory).
         """
 
         self.name = "GraphRAG Pipeline"  # Name of the application
@@ -40,10 +45,11 @@ class Application:
         self.build_kg = build_kg
         self.resolve_ex_post = resolve_ex_post
         self.graph_retrieval = graph_retrieval
+        self.output_directory = output_directory
 
         # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
         # modules in parent directory)
-        self.graphrag_pipeline_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located (graphrag_pipeline)
+        self.graphrag_pipeline_dir = Path(__file__).parent  # Get the directory where this script is located (graphrag_pipeline)
 
         # Ensure pipeline directory is in sys.path
         if str(self.graphrag_pipeline_dir) not in sys.path:
@@ -254,13 +260,61 @@ class Application:
         
         if self.graph_retrieval:  # If countries for graph retrieval are specified, run graph retrieval. Empty lists are falsy in Python.
 
-            # TODO: Implement graph retrieval logic based on the specified countries
-
             self.logger.info(f"Creating forward-looking security reports for the following countries: {', '.join(self.graph_retrieval)}")
-        
+
+            try:
+
+                # Iterate over the countries specified for graph retrieval. For
+                # each country, run the GraphRAG pipeline with the configured retrievers.
+                for country in self.graph_retrieval:
+
+                    self.logger.info(f"Generating security report for {country}")
+
+                    for retriever, config in self.retrieval_config.items():  # Iterate over all retrievers in the config file
+                        if config['enabled'] is True:  # If retrieval is enabled for the retriever, do GraphRAG using that retriever
+                            
+                            self.logger.info(f"Running GraphRAG for {country} with the retriever: {retriever}")
+                            
+                            # Set the path to the appropriate script
+                            script_path = f"pipeline.05_graphrag.{retriever}_graphrag"
+                            
+                            # Ensure the script path is valid
+                            if not importlib.util.find_spec(script_path):
+                                self.logger.error(f"GraphRAG module for {retriever} not found.")
+                                continue  # Skip to the next retriever if the module is not found
+                            
+                            # Set environment variables for the script to access
+                            os.environ['GRAPHRAG_COUNTRY'] = country
+                            if hasattr(self, 'output_directory') and self.output_directory:  # If output_directory is set, use it
+                                os.environ['GRAPHRAG_OUTPUT_DIR'] = self.output_directory  # Set the output directory for GraphRAG
+                            elif 'GRAPHRAG_OUTPUT_DIR' in os.environ:
+                                # Remove the environment variable if no output directory is set
+                                del os.environ['GRAPHRAG_OUTPUT_DIR']
+                            
+                            # Execute the script directly as if it was run with python -m in the terminal
+                            try:
+                                self.logger.info(f"Executing script: {script_path}")
+                                runpy.run_module(script_path, run_name="__main__")
+                                self.logger.info(f"Successfully executed script for {retriever}")
+                            except Exception as e:
+                                self.logger.error(f"Error executing script for {retriever}: {str(e)}")
+                            finally:
+                                # Clean up environment variables
+                                if 'GRAPHRAG_COUNTRY' in os.environ:
+                                    del os.environ['GRAPHRAG_COUNTRY']
+                                if 'GRAPHRAG_OUTPUT_DIR' in os.environ:
+                                    del os.environ['GRAPHRAG_OUTPUT_DIR']
+
+                    else:
+                        self.logger.debug(f"Skipping {retriever} - not enabled for GraphRAG")
+                        continue  # Skip to the next retriever if GraphRAG for that retriever is not enabled
+            
+            except ImportError as e:
+                self.logger.error(f"Could not import GraphRAG module: {str(e)}")
+
         else:
-            pass  # If ex-post entity resolution is disabled, skip this step
-        
+            pass  # If no countries are passed for graph retrieval, skip this step
+
     def _load_configs(self):
         """Load all configuration files necessary to run the program."""
 
