@@ -16,8 +16,8 @@ def load_config():
     """Load configuration settings for ACLED data ingestion."""
     
     # Get the directory path of the current script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    
+    script_dir = Path(__file__).parent
+
     # Navigate to config_files directory
     config_path = Path(script_dir).parent.parent / 'config_files' / 'data_ingestion_config.json'
     

@@ -1,11 +1,12 @@
 import sys
 import os
 import asyncio
+from pathlib import Path
 
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
 # modules in parent directory)
-script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
-graphrag_pipeline_dir = os.path.dirname(script_dir)  # Get the parent directory (graphrag_pipeline)
+script_dir = Path(__file__).parent  # Get the directory where this script is located
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
 if graphrag_pipeline_dir not in sys.path:
     sys.path.append(graphrag_pipeline_dir)
 

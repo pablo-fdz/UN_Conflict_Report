@@ -1,12 +1,13 @@
 import sys
 import os
+from pathlib import Path
 
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
 # modules in parent directory)
-script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
-parent_dir = os.path.dirname(os.path.dirname(script_dir))  # Get the parent directory (graphrag_pipeline)
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
+script_dir = Path(__file__).parent  # Get the directory where this script is located
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
+if graphrag_pipeline_dir not in sys.path:
+    sys.path.append(graphrag_pipeline_dir)
 
 # Utilities
 from dotenv import load_dotenv
@@ -31,9 +32,9 @@ class KGConstructionPipeline:
     
         # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
         # modules in parent directory)
-        script_dir = os.path.dirname(os.path.abspath(__file__))  # Get the directory where this script is located
-        parent_dir = os.path.dirname(os.path.dirname(script_dir))  # Get the parent directory (graphrag_pipeline)
-        self.config_files_path = os.path.join(parent_dir, 'config_files')  # Find path to config_files folder
+        script_dir = Path(__file__).parent  # Get the directory where this script is located
+        graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
+        self.config_files_path = os.path.join(graphrag_pipeline_dir, 'config_files')  # Find path to config_files folder
         self._load_configs()
         self._setup_credentials()
         
