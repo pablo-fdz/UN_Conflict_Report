@@ -13,28 +13,28 @@ def parse_arguments():
     # Add arguments for each pipeline step
     parser.add_argument(
         '--ingest',
-        help='Download data from configured sources.',
+        help='Download data from configured sources (if argument is provided).',
         action='store_true',  # If the flag is present, ingest data. By default, it is False.
         dest='ingest_data'
     )
     
     parser.add_argument(
         '--build-kg',
-        help='Build the knowledge graph from the configured sources.',
+        help='Build the knowledge graph from the configured sources (if argument is provided).',
         action='store_true',  # If the flag is present, build the knowledge graph. By default, it is False.
         dest='build_kg'
     )
     
     parser.add_argument(
         '--resolve-ex-post',
-        help='Perform ex-post entity resolution. This will resolve entities in the knowledge graph after it has been built.',
+        help='Perform ex-post entity resolution (if argument is provided). This will resolve entities in the knowledge graph after it has been built.',
         action='store_true',  # If the flag is present, resolve entities. By default, it is False.
         dest='resolve_ex_post'
     )
     
     parser.add_argument(
         '--retrieval',
-        help='Space-separated countries for which to retrieve the knowledge graph and generate security reports. This argument can accept multiple values.',
+        help='Space-separated countries for which to retrieve the knowledge graph and generate security reports. This argument can accept multiple values. GraphRAG is not executed if no countries are provided or if the argument is not used.',
         nargs='*',  # Zero or more arguments can be provided
         default=[],  # Default is an empty list if no arguments are provided
         dest='graph_retrieval'
