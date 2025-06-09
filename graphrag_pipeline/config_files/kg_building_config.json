@@ -201,9 +201,6 @@
         },
         "ex_post_resolver": "SinglePropertyExactMatchResolver"
     },
-    "debug_config": {
-        "enable_logging": true
-    },
     "dev_settings": {
         "build_with_sample_data": true,
         "on_error": "RAISE",
