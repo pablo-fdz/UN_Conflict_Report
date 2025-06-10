@@ -21,19 +21,19 @@ base_prompt = """
 
         Please respond **only** with a JSON object matching the following format:
 
-        {
-        "criteria_1": {
-            "score": <integer from 1 to 5>,
-            "comment": "<explanation of what to improve if score is less than 5, or 'Excellent' if score is 5>"
-        },
-        "criteria_2": {
-            "score": <integer from 1 to 5>,
-            "comment": "<explanation or 'Excellent'>"
-        },
+        {{
+        "criteria_1": {{
+            "score": integer from 1 to 5,
+            "comment": "explanation of what to improve if score is less than 5, or 'Excellent' if score is 5"
+        }},
+        "criteria_2": {{
+            "score": integer from 1 to 5,
+            "comment": "explanation or 'Excellent'"
+        }},
         ...
-        }
+        }}
 
-        Replace `"criteria_1"`, `"criteria_2"`, etc. with the exact names of the evaluation criteria you just scored.
+        Replace "criteria_1", "criteria_2", etc. with the exact names of the evaluation criteria you just scored.
 
         Do not include any text outside the JSON object.
 
