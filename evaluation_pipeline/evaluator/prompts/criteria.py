@@ -42,6 +42,3 @@ criteria_dict ={
         "impartiality_2": "Are all actors described by their proper names and affiliations without value judgments (e.g., simply stating the name of actors rather than terms such as “terrorists”)?",
     }
 }
-
-
-
