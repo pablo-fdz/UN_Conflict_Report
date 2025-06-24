@@ -4,7 +4,7 @@ from evaluator.prompts.base_prompt import base_prompt
 from evaluator.prompts.criteria import criteria_dict
 
 
-class LLMJudge:
+class FormatEvaluator:
     def __init__(self, model):
         self.model = model
         self.base_prompt = base_prompt
