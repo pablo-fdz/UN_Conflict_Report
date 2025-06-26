@@ -1,208 +1,197 @@
-# Knowledge Graph Pipeline Overview
+# Knowledge Graph Pipeline for Conflict Analysis
 
-## Pipeline Steps
+This repository contains an end-to-end pipeline for building and querying a knowledge graph from various data sources related to conflict and security events. It uses the `neo4j-graphrag` library to perform Retrieval-Augmented Generation (RAG) on the constructed graph, enabling complex queries about security situations.
+
+## Architecture Overview
+
+The pipeline is designed with a modular architecture, separating concerns into distinct components. This allows for easier maintenance, configuration, and extension.
+
+-   **`main.py`**: The main entry point of the application. It parses command-line arguments to determine which parts of the pipeline to run.
+-   **`application.py`**: The core orchestrator. The `Application` class initializes configurations and calls the appropriate pipeline scripts based on the command-line arguments.
+-   **`pipeline/`**: Contains the scripts for each major step of the process:
+    -   `01_data_ingestion/`: Scripts to fetch data from sources like ACLED.
+    -   `02_kg_building/`: Scripts to process ingested data and construct the knowledge graph.
+    -   `03_indexing.py`: Script to create vector and full-text indexes in Neo4j for efficient retrieval.
+    -   `04_ex_post_resolver.py`: Script for running entity resolution after the graph is built.
+    -   `05_graphrag/`: The main logic for the GraphRAG process, including report generation.
+-   **`library/`**: Contains reusable, high-level abstractions:
+    -   `kg_builder/`: Includes the `CustomKGPipeline` which is a tailored version of the `neo4j-graphrag` pipeline.
+    -   `kg_indexer/`: A helper class to manage Neo4j graph indexes.
+-   **`config_files/`**: Holds all JSON configuration files and the `.env` file for secrets. This is the primary interface for users to customize the pipeline's behavior without changing code.
+-   **`reports/`**: The default output directory where the generated markdown reports are saved.
+
+## How to Use
+
+### 1. Prerequisites
+
+-   Python 3.10+
+-   Install dependencies: `pip install -r requirements.txt`
+-   Access to a Neo4j database and a Google Gemini API key.
+
+### 2. Configuration
+
+1. Navigate to the `graphrag_pipeline/config_files/` directory.
+
+2. Create a `.env` file by copying the template or creating a new one.
+
+3. Fill in your credentials:
+
+   ```env
+   NEO4J_URI="bolt://localhost:7687"
+   NEO4J_USERNAME="neo4j"
+   NEO4J_PASSWORD="your_password"
+   GEMINI_API_KEY="your_gemini_api_key"
+   ```
+
+4. Review the `.json` configuration files (`data_ingestion_config.json`, `kg_building_config.json`, etc.) to customize the pipeline's behavior.
+
+   > **Important**: All of the values from the JSON configuration files can be adjusted. Nevertheless, **the keys should not be modified under any circumstance**, as the pipeline expects the existence of some keys with particular names. See the section on KG Building for more details on schema configuration.
+
+### 3. Running the Pipeline
+
+The pipeline is executed from the root of the `graphrag_pipeline` directory via `main.py`. You can control which steps are executed using command-line flags.
+
+```bash
+# To run the full pipeline: ingest data, build KG, resolve entities ex-post, and generate a report for Sudan
+python main.py --ingest-data --build-kg --resolve-ex-post --graph-retrieval "Sudan"
+
+# To only ingest data
+python main.py --ingest-data
+
+# To only build the knowledge graph (assumes data is already ingested)
+python main.py --build-kg
+
+# To generate a report for multiple countries (assumes KG is built and indexed)
+python main.py --graph-retrieval "Sudan" "UAE"
+```
+
+## Pipeline Steps in Detail
 
 ### 1. Data Ingestion
-- **Sources**: GDELT, ACLED, Google News, Factal
-- **Output**: Standardized data files in `data/` folder
-- **Configuration**: `config_files/data_sources_config.json`
+
+-   **Process**: Fetches data from sources defined in `config_files/data_ingestion_config.json`.
+-   **Scripts**: Located in `graphrag_pipeline/pipeline/01_data_ingestion/`.
+-   **Output**: Standardized data files saved in the `data/` folder.
 
 ### 2. Knowledge Graph Building
-- **Input**: Processed data files
-- **Process**: Entity extraction, relationship identification, temporal KG construction
-- **Output**: Neo4j knowledge graph
 
-### 3. Knowledge Graph Indexing
-- **Input**: Neo4j knowledge graph
-- **Process**: Embedding generation, full-text indexing
-- **Output**: Indexed KG ready for retrieval
+-   **Process**: Takes the ingested data, extracts entities and relationships using an LLM according to a defined schema, and populates the Neo4j database.
+-   **Core Logic**: `CustomKGPipeline` and `KGConstructionPipeline`.
+-   **Configuration**: `config_files/kg_building_config.json` controls the LLM, embedding model, text splitting, schema, and prompts.
 
-### 4. GraphRAG Query
-- **Input**: User queries
-- **Process**: Retrieval + LLM generation
-- **Output**: Contextual answers based on KG
+#### KG Construction Components
 
-# About the library
+![KG building pipeline](kg_builder_pipeline.png)
 
-This library creates the end-to-end pipeline for GraphRAG, from the creation of the knowledge graph to the retrieval with RAG + graph capabilities.
+A Knowledge Graph (KG) construction pipeline requires a few components, most of which are implemented in our `CustomKGPipeline`:
 
-General references:
-1. [Neo4j GraphRAG Python library user guide](https://neo4j.com/docs/neo4j-graphrag-python/current/index.html).
-2. [Neo4j GraphRAG Python library API documentation](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html).
-3. The implementation of this module is also inspired on (and, in many cases, builds upon) the [examples from the `neo4j-graphrag-python` library](https://github.com/neo4j/neo4j-graphrag-python/tree/main/examples).
+-   **Data loader**: Extracts text from source files.
+-   **Text splitter**: Splits text into smaller chunks manageable by the LLM context window.
+-   **Chunk embedder**: Computes embeddings for each text chunk.
+-   **Schema builder**: Provides a schema to ground the LLM-extracted entities and relations.
+-   **Lexical graph builder**: Builds the graph of `Document` and `Chunk` nodes and their relationships.
+-   **Entity and relation extractor**: Extracts relevant entities and relations from the text via an LLM.
+-   **Knowledge Graph writer**: Saves the entities and relations to the Neo4j database.
+-   **Entity resolver**: Merges similar entities into a single node.
 
-# Building the knowledge graph: `kg_builder` module
 
-## Why we cannot use `SimpleKGPipeline` out of the box (for now)
+#### Why a Custom Pipeline?
 
-For 2 main reasons:
-1. Using this pre-defined pipeline, it is not possible to reliably create document chunks from available metadata (like can be done when creating the graph from PDF files). Text data will most likely be inputted from some sort of data frame, where in one column the text will be stored and other columns will contain metadata (e.g., the title of the news article, the news outlet, the author, a unique document identifier, etc.). To create a node with the label "Document" which is linked to a text chunk and which includes relevant document metadata (title, source, author, etc.), we need to build a pipeline with a custom `LexicalGraphBuilder` instance.
-2. To extend entity resolution and make it less conservative. Behind the scenes, `SimpleKGPipeline` uses the `SinglePropertyExactMatchResolver`, which "merge[s] nodes with same label and exact same property value (by default using the "name" property)." The resolver cannot be changed with any parameter of the `SimpleKGPipeline`, but the custom resolution should be done ex-post (after instantiating the graph, which can be inconvenient due to storage constraints). A resolver which can be much more useful is the `SpaCySemanticMatchResolver`, which "merges nodes with same label and similar textual properties (by default using the "name" property) based on spaCy embeddings and cosine similarities of embedding vectors." This can be much more useful as it can merge documents which are extremely similar in meaning.
+The default `SimpleKGPipeline` from `neo4j-graphrag` was not sufficient for two main reasons:
 
-## How to create a custom pipeline for building a KG
+1.  **Metadata Handling**: It lacks robust support for creating `Document` nodes with rich metadata from tabular data. Our `CustomKGPipeline` uses a `LexicalGraphBuilder` to link text chunks to a parent `Document` node that stores this metadata.
+2.  **Entity Resolution**: The default resolver (`SinglePropertyExactMatchResolver`) is too conservative. We use the `SpaCySemanticMatchResolver` to merge entities based on semantic similarity, which is more effective for real-world data.
 
-Main steps behind the KG construction pipeline (source: [User Guide: Knowledge Graph Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)), which is implemented in the `CustomKGPipeline` clsas:
+#### Schema Configuration
 
-> A Knowledge Graph (KG) construction pipeline requires a few components (some of the below components are optional):
-> 
-> - **Data loader**: extract text from files (PDFs, …).
-> - **Text splitter**: split the text into smaller pieces of text (chunks), manageable by the LLM context window (token limit).
-> - **Chunk embedder** (optional): compute the chunk embeddings.
-> - **Schema builder**: provide a schema to ground the LLM extracted entities and relations and obtain an easily navigable KG.
-> - **Lexical graph builder**: build the lexical graph (Document, Chunk and their relationships) (optional).
-> - **Entity and relation extractor**: extract relevant entities and relations from the text.
-> - **Knowledge Graph writer**: save the identified entities and relations.
-> - **Entity resolver**: merge similar entities into a single node. Can be integrated in the pipeline or applied ex-post, once the knowledge graph has already been created.
+In the schema configuration (`kg_building_config.json`), `nodes`, `edges` and `triplets` need to have the following structure:
 
-![](kg_builder_pipeline.png)
-
-User guides (essential to understand how to create the pipeline and maintain it):
-1. [User Guide: Knowledge Graph Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)
-2. [User Guide: Pipeline](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_pipeline.html)
-
-## Implementation guide
-
-### Parameters
-
-There are 3 "levels" of configuration for the implementation of the library (creation of the knowledge graph):
-
-1. Library scripts (e.g., `custom_kg_pipeline.py` or `build_kg_from_df.py`). These classes or functions are designed such that they should not require regular tweaking, but serve as the basic structure for creating the knowledge graph.
-2. Implementation scripts. Certain parameters of the class that builds the knowledge graph, `CustomKGPipeline`, are not meant to be tweaked constantly (e.g., the resolver, the batch size for instantiating the Neo4j graph with data, etc.). Ideally, there are some "optimal" values for these parameters which should be relatively easy to find and to keep constant.
-3. Configuration files (`.json`) and environment files (`.env`). The former files contain parameters that can and should be tweaked relatively more often in order to find the best performance. These include:
-    - Configuration of the text splitter (chunk size, chunk overlap, etc.). This should be adapted taking into consideration, mainly, the embedding model and LLM's context window, the rate limits for the LLM, etc. 
-    - Embedding model for text embedding of the input. Must be one of the `SentenceTransformer` models (see the available models [here](https://sbert.net/docs/sentence_transformer/pretrained_models.html#original-models)).
-    - LLM for named entity recognition and its configuration (e.g., temperature).
-    - Schema configuration, like whether to use a template for creating the nodes and edges, the suggested triplets, etc.
-    - Prompt template that is passed to the LLM for the creation of the knowledge graph.
-    - Examples to pass to the LLM for few-shot learning to improve the creation of the knowledge graph.
-  
-    On the other hand, the variables in the `.env` file should be adjusted accordingly to the Neo4j database where the KG will be stored and the Gemini API key.
-
-### About the configuration file: allowed and forbidden changes
-
-> All of the values from the JSON configuration file (e.g., `"gemini-2.0-flash"` in ` "model_name": "gemini-2.0-flash"`) can be adjusted. Nevertheless, **the keys should not be modified under any circumstance** (as the pipeline sometimes expects the existence of some keys with particular names). 
-
-Furthermore, in the schema configuration, `nodes`, `edges` and `triplets` need to have the following structure (but with the option of omitting some fields):
-
-```{json}
+```json
 {
-    ...
     "schema_config": {
-        ...
         "nodes": [
-            {"label": "Event", 
-            "description": "Significant occurrences of the input text, such as conflicts, elections, coups, attacks or any other relevant information",
-            "properties": [
-                {"name": "name", "type": "STRING", "description": "Clarifying description for the property."},
-                {"name": "date", "type": "DATE"},
-                {"name": "end_date", "type": "DATE"},
-                {"name": "type", "type": "STRING"},
-                {"name": "severity", "type": "INTEGER"},
-                {"name": "description", "type": "STRING"}
-            ]},
-            
-            ...
-            
+            {"label": "Event", "description": "...", "properties": [
+                {"name": "name", "type": "STRING", "description": "..."},
+                {"name": "date", "type": "DATE"}
+            ]}
         ],
         "edges": [
-            {"label": "OCCURRED_IN", 
-            "description": "Indicates where an event took place",
-            "properties": [
-                {"name": "start_date", "type": "DATE"},
-                {"name": "end_date", "type": "DATE", "description": "This description makes the LLM understand dates much better."},
-                {"name": "certainty", "type": "FLOAT"}
-            ]},
-            
-            ...
-
+            {"label": "OCCURRED_IN", "description": "...", "properties": [
+                {"name": "start_date", "type": "DATE"}
+            ]}
         ],
-        ...
         "triplets": [
-            [
-                "Event",
-                "OCCURRED_IN",
-                "Country"
-            ],
-            [
-                "Event",
-                "OCCURRED_IN",
-                "Region"
-            ],
-            ...
-        ],
-        ...
-    },
-    ...
+            ["Event", "OCCURRED_IN", "Country"]
+        ]
+    }
 }
 ```
 
-Possible property types for the schema (`SchemaProperty`):
+Possible property types are: `"BOOLEAN"`, `"DATE"`, `"FLOAT"`, `"INTEGER"`, `"STRING"`, etc.
 
-```
-"BOOLEAN",
-"DATE",
-"DURATION",
-"FLOAT",
-"INTEGER",
-"LIST",
-"LOCAL_DATETIME",
-"LOCAL_TIME",
-"POINT",
-"STRING",
-"ZONED_DATETIME",
-"ZONED_TIME"
-```
+#### Embedding Models
 
-### Embedding models
+There is a trade-off between an embedding model's context window and the LLM's processing cost.
 
-Generally, embedding models (pure encoder models) have a much lower context window than LLMs (like ChatGPT or Gemini), of (generally) less than 1,000 tokens of context window in the first case and approximately 1M tokens context window in the latter. This creates a (small, in our use case) conflict between the embedding model and the LLM for entity recognition:
-- For an embedding model to encode the whole text chunk coming from a news article, text chunks have to be relatively small, which would generate the need of splitting articles into more than one piece. 
-- On the other hand, if articles are split into more than one text chunk, the LLM used for entity recognition will have to be called more often, which can increase the pricing. This can be especially inconvenient if we use the free tier of Gemini models, which have a limit on the requests per minute and requests per day that can be done. This would not be an issue if the limitations were purely based on the input and output tokens.
+-   Embedding models like `all-MiniLM-L6-v2` have small context windows (e.g., 256 tokens), which may require splitting a single news article into multiple chunks.
+-   Splitting articles increases the number of calls to the entity extraction LLM, which can be costly and hit rate limits.
+-   While the most important information in news is often at the beginning, larger context windows can capture more nuance. Consider these `SentenceTransformer` models:
+    -   `all-mpnet-base-v2`: Best quality, 384 token limit.
+    -   `all-distilroberta-v1`: Faster, 512 token limit.
+    -   `all-MiniLM-L6-v2`: Fastest, good quality, 256 token limit.
+-   An alternative is Google's `text-embedding-004`, which is free (with rate limits) and supports up to 2,048 tokens.
 
-Consider the example of the following [article](https://natlawreview.com/article/state-law-business-interruption-insurance-coverage-covid-19-claims): in total the body of the article contains approximately 2,500 tokens (according to this [tool](https://tokenizer.streamlit.app/)). On the other hand, the `SentenceTransformer` model that generally offers the best ratio performance-efficiency (`all-MiniLM-L6-v2`) has a maximum sequence length (or context window) of 256 tokens (see the information [here](https://sbert.net/docs/sentence_transformer/pretrained_models.html#original-models)). This would make the model encode only this first part of the sample article:
+### 3. Knowledge Graph Indexing
 
-> It’s been a year since COVID-19 caused a torrent of insurance coverage litigation regarding business interruption and extra expense coverage for losses due to governmental orders, shut down requirements, and the spread of the coronavirus. With more than 335 decisions having been issued as of early May 2021, the numbers show significantly better odds for policyholders than the insurance industry and many media reports suggest.
-> 
-> ‘So you’re saying that there’s a chance!’
-> 
-> There are more than 50 decisions in which courts have either granted summary judgment to policyholders or denied insurance companies’ motions to dismiss in the context of business interruption and extra expense insurance claims resulting from the pandemic. 
-> 
-> The earliest decisions largely favored insurance carriers, with courts granting motions to dismiss in those cases. But many of those early cases involved policies with express virus exclusions. More recent decisions have rejected insurance carrier arguments and either denied their motions for dismissal or judgement on the pleadings, or ruled in the policyholder’s favor on dispositive motions.
-Key points from favorable rulings
-> 
-> The central argument in the majority of these cases is whether there is physical loss or damage to the policyholder’s locations (for business interruption coverage), or whether communicable disease coverage was triggered (for those policies with such coverage). Certain insurance policies with communicable
+-   **Process**: Creates vector and full-text indexes on the `Chunk` nodes in the knowledge graph. This is crucial for efficient similarity searches and keyword lookups during the retrieval phase.
+-   **Script**: `pipeline/03_indexing.py`
+-   **Why index?**:
+    -   **Vector indexes** are needed for retrievers that use the numerical representation (embeddings) of text to find the most semantically similar information to a query.
+    -   **Text indexes** are useful for retrievers that perform keyword searches on the raw text of the ingested data.
 
-In the case of news articles, this sequence length can be more than enough to capture the general meaning of the text (as the most relevant information is generally on top). However, the following models can also be useful in order to increase the maximum sequence length and capture more of the semantics of a text (see all of the available `SentenceTransformer` models [here](https://sbert.net/docs/sentence_transformer/pretrained_models.html#original-models)):
-- `all-mpnet-base-v2`. According to the authors of the library, this model "provides the best quality". It has a maximum sequence length of 384 tokens.
-- `all-distilroberta-v1`. 1.5 times faster than `all-mpnet-base-v2`, and with a larger maximum sequence length (512 tokens).
-- `all-MiniLM-L6-v2`. "5 times faster [than `all-mpnet-base-v2`] and still offers good quality". Maximum sequence length of 256 tokens.
+### 4. GraphRAG Query & Report Generation
 
-Another alternative is to use a free (but not open-source) embedding model, like Google's [`text-embedding-004`](https://ai.google.dev/gemini-api/docs/models#text-embedding), which can take up to 2,048 input tokens and is [free of charge](https://ai.google.dev/gemini-api/docs/pricing) (but with a rate limit of 1,500 requests per minute). 
+-   **Process**: This is the final step where the system answers a user's query. It uses a retriever to fetch relevant context from the KG, which is then passed to an LLM to generate a coherent, evidence-based answer.
+-   **Core Logic**: `GraphRAGConstructionPipeline`.
+-   **Configuration**: `config_files/kg_retrieval_config.json` and `config_files/graphrag_config.json`.
+-   **Output**: A detailed markdown report saved in the `reports/` directory.
 
-# Indexing the knowledge graph: `kg_indexer` module
+#### Retrievers
 
-Indexing particular elements of the graph enables faster queries over those elements. In the use case of GraphRAG, indexing the text embeddings or the text itself speeds up the process of information retrieval.
-- Vector (embedding) indexes are needed for those retrievers which exploit the numerical representation of the ingested data (text) in order to find the most relevant information that answers a query.
-- Text indexes, on the other hand, are useful for those retrievers which explore the actual text of the ingested data in order to answer a query with the information contained in a knowledge graph.
+The pipeline supports several retrieval strategies to fetch context from the knowledge graph:
 
-References:
-1. [User guide of `graphrag-neo4j` on database operations](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#db-operations).
-2. [API documentation of `graphrag-neo4j` on database interaction](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#database-interaction).
+| Retriever                 | Description                                                  |
+| ------------------------- | ------------------------------------------------------------ |
+| **VectorRetriever**       | Performs a similarity search using the vector index.         |
+| **VectorCypherRetriever** | Extends vector search by running a configurable Cypher query to fetch more context around the matched nodes. |
+| **HybridRetriever**       | Combines both vector and full-text search for more robust retrieval. |
+| **HybridCypherRetriever** | Same as HybridRetriever with a retrieval query similar to VectorCypherRetriever. |
+| **Text2Cypher**           | Translates the natural language question directly into a Cypher query to be run against the graph. |
 
-# Retrieving information from the knowledge graph: using retrievers
+## How to Contribute
 
-It is at this stage that the advantages of GraphRAG can be exploited, by making use of the generated text embeddings as well as the possibility of traversing the graph and finding relevant information related to a document.
+To maintain code quality and consistency, please follow these guidelines depending on the type of change you are making.
 
-| Retriever                 | Description                                                                                                                                                                                                                                                   |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **VectorRetriever**       | Performs a similarity search based on a Neo4j vector index and a query text or vector. Returns the matched node and similarity score.                                                                                                                         |
-| **VectorCypherRetriever** | Performs a similarity search based on a Neo4j vector index and a query text or vector. The returned results can be configured through a retrieval query parameter executed after the index search. Can be used to fetch more context around the matched node. |
-| **HybridRetriever**       | Uses both a vector and a full-text index in Neo4j.                                                                                                                                                                                                            |
-| **HybridCypherRetriever** | Same as HybridRetriever with a retrieval query similar to VectorCypherRetriever.                                                                                                                                                                              |
-| **Text2Cypher**           | Translates the user question into a Cypher query to be run against a Neo4j database (or Knowledge Graph). The results are then passed to the LLM to generate the final answer. Note that, in this case, no similarity-based or full-text based method is used to retrieve information.                                                                                 |
+### Level 1: Configuration Files (`.json`, `.env`)
 
+-   **What**: This is the primary way to customize a pipeline run. It involves changing values in the configuration files to tweak performance, prompts, or models.
+-   **Use Case**: Adjusting LLM temperature, changing chunk size, modifying prompt templates, providing few-shot examples.
+-   **Rule**: You can change any *value*, but **do not change the keys**.
 
-References:
-1. Essential user guide for understanding how to structure of the retriever: [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#). Main useful information is from the ["Retriever Configuration"](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#retriever-configuration) section onwards. 
-2. [API documentation on the available retrievers](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#retrievers).
-3. [API documentation on GraphRAG](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#graphrag) (used to generate the final output).
+### Level 2: Implementation Scripts (`pipeline/`)
+
+-   **What**: These scripts contain parameters that are not meant to be tweaked constantly (e.g., batch sizes, specific resolver choices). They define the steps of a pipeline run.
+-   **Use Case**: Adding a new data ingestion source, changing the logic of how data is processed for KG building, or altering the report formatting.
+
+### Level 3: Library Scripts (`library/`, `application.py`, `main.py`)
+
+-   **What**: These classes and functions form the basic structure for the entire application. They should not require regular tweaking.
+-   **Use Case**: Changing the fundamental pipeline flow, altering the `CustomKGPipeline`'s core components, or adding new command-line arguments. This level requires a deep understanding of the architecture.
+
+## References
+
+-   [Neo4j GraphRAG Python Library User Guide](https://neo4j.com/docs/neo4j-graphrag-python/current/index.html)
+-   [Neo4j GraphRAG Python Library API Documentation](https://neo4j.com/docs/neo4j-graphrag-python/current/api.html)
+-   [User Guide: Knowledge Graph Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)
+-   [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)
+-   [Examples from the `neo4j-graphrag-python` library](https://github.com/neo4j/neo4j-graphrag-python/tree/main/examples)

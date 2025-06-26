@@ -1,0 +1,79 @@
+{
+    "section_split": {
+        "split_pattern": "(?m)^## (.+?)\\s*\\n(.*?)(?=^## |\\Z)"
+    },
+    "accuracy_evaluation": {
+        "base_claims_prompt": "You are an AI tasked with extracting verifiable claims from a section of a report. A verifiable claim is an atomic statement that can be checked for accuracy and is relevant to the topic of the report. Here is an example:\nSection: \"The constant attacks of Group A and Group B on civilians in Country X have led to a high number of casualties as well as internally displaced persons (IDPs). In May 2025, there have been more IDPs than any other month that year.\"\n\nFrom this section, you can extract the following verifiable claims:\n1. \"Group A has been carrying constant attacks on civilians in Country X.\"\n2. \"Group B has been carrying constant attacks on civilians in Country X.\"\n3. \"In May 2025, there have been more IDPs than in any of the previous months of 2025.\"\n\nNotes on this:\n- Claims 1 and 2 have to be separate claims, because they refer to different groups, so one could be true while the other is false and that would make the first sentence incorrect.\n- The claim in the original section about a \"high number of casualties\" is not verifiable, because it is not quantifiable/specific. We do not know what \"high\" means and we do not have a reference to compare it too. Claims that are subjective or vague should not be extracted.\n- It is important that you always make all the necessary information explicit in the claims, without pronouns or terms that make references to previous sentences, so that each claim is self-contained and can be verified independently.\n- Also, when abbreviations of any kind are used, always include, if you know it with certainty, the full name/term plus the abbreviation in parentheses.\n\nYou must extract all verifiable claims from the following section of a report:\nSection: \"{section_text}\"\n\nReturn the the claims in the format of a python list, with each claim as a string. Return only this list, in between square brackets, without any additional text or formatting so i can easily use it as a variable in my code.\n\nExample output: [\"Claim 1\", \"Claim 2\", \"Claim 3\", ...]",
+        "base_questions_prompt": "You are a journalist tasked with evaluating the accuracy of a set of claims against a knowledge base.\nFor the given list of claims below, you must generate 1 to 4 questions aimed at leading you to the information needed to verify each claim.\nEach question should be specific, clear, and concise, designed to have a closed-ended objective answer.\n\nWhen abbreviations of any kind are used in the claim, always include in the question, if you know it with certainty, the full name/term plus the abbreviation in parentheses.\n\nHere is the list of claims:\n{claims_list}. \nReturn your answer in the format of a python dictionary, where each key is a claim and the value is a list of questions for that claim. Return only this dictionary, without any additional text or formatting.\n\nExample output: {\"Claim 1\": [\"Question 1\", \"Question 2\"], \"Claim 2\": [\"Question 1\", \"Question 2\", \"Question 3\"]}",
+        "llm_claims_config": {
+            "model_name": "gemini-2.5-flash-lite-preview-06-17",
+            "model_params": {
+                "temperature": 0.0
+            }
+        },
+        "llm_questions_config": {
+            "model_name": "gemini-2.5-flash-lite-preview-06-17",
+            "model_params": {
+                "temperature": 1.0
+            }
+        }
+    },
+    "retrievers": {
+        "VectorRetriever": {
+            "enabled": true,
+            "return_properties": [
+                "text"
+            ],
+            "search_params": {
+                "top_k": 5
+            }
+        },
+        "VectorCypherRetriever": {
+            "enabled": true,
+            "retrieval_query": "//1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n//2) collect relationships and text chunks\nWITH collect(DISTINCT chunk) AS chunks,\n collect(DISTINCT rel) AS rels\n\n//3) format and return context\nRETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') + '\\n\\n=== kg_rels ===\\n' +\n apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info",
+            "search_params": {
+                "top_k": 5
+            }
+        },
+        "HybridRetriever": {
+            "enabled": true,
+            "return_properties": [
+                "text"
+            ],
+            "search_params": {
+                "top_k": 5,
+                "ranker": "linear",
+                "alpha": 0.5
+            }
+        },
+        "HybridCypherRetriever": {
+            "enabled": true,
+            "retrieval_query": "//1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n//2) collect relationships and text chunks\nWITH collect(DISTINCT chunk) AS chunks,\n collect(DISTINCT rel) AS rels\n\n//3) format and return context\nRETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') + '\\n\\n=== kg_rels ===\\n' +\n apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info",
+            "search_params": {
+                    "top_k": 5,
+                    "ranker": "linear",
+                    "alpha": 0.5
+            }
+        }
+    },
+    "graphrag": {
+        "embedder_config": {
+            "model_name": "all-MiniLM-L6-v2",
+            "model_params": {
+            }
+        },
+        "llm_config": {
+            "model_name": "gemini-2.5-flash-preview-05-20",
+            "model_params": {
+                "temperature": 0.0
+            }
+        },
+        "rag_template_config": {
+            "template": "# Question:\n{query_text}\n \n# Context:\n{context}\n \n# Examples:\n{examples}\n \n# Answer:\n",
+            "system_instructions": "Answer the Question using the following Context. Only respond with information mentioned in the Context. Do not inject any speculative information not mentioned. If no examples are provided, omit the Examples section in your answer."
+        },
+        "query_text": "Below you will be provided with a claim and a set of questions related to that claim. Please answer the questions based **exclusively** on the information provided below. Do not use your internal knowledge. Answer concisely and truthfully, without making assumptions or adding information beyond what is provided below. If there is not enough information to answer a question, state that by answering the question with \"Not enough information to answer this question.\".\n\nHere is the claim and the questions:\nClaim: {claim}\nQuestions: {questions}. \n\nFormat your answer as a python dictionary where each key is a question and the value is the answer to that question. Return only this dictionary, without any additional text or formatting.\n\nExample output: {\"Question 1\": \"Answer 1\", \"Question 2\": \"Answer 2\"}",
+        "examples": "",
+        "return_context": true
+    }
+}
