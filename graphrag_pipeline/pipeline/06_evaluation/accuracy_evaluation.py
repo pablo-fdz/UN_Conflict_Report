@@ -20,16 +20,13 @@ from library.kg_builder.utilities import GeminiLLM
 from neo4j_graphrag.generation import RagTemplate
 from neo4j_graphrag.generation.graphrag import GraphRAG
 from library.evaluator import ReportProcessor, AccuracyEvaluator
-from library.kg_builder.utilities import GeminiLLM
 from neo4j_graphrag.retrievers import (
     VectorRetriever,
     VectorCypherRetriever,
     HybridRetriever,
-    HybridCypherRetriever,
-    Text2CypherRetriever,
+    HybridCypherRetriever
 )
 from library.kg_indexer import KGIndexer
-from neo4j_graphrag.schema import get_schema
 
 # Neo4j and Neo4j GraphRAG imports
 import neo4j
@@ -64,48 +61,77 @@ async def main(country: str = None, reports_output_directory: str = None, accura
     
     gemini_api_key = os.getenv('GEMINI_API_KEY')
 
-    llm_claims = GeminiLLM(
-            model_name=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_name'],
-            google_api_key=gemini_api_key,
-            model_params=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_params']
-        )
+    # ========== 2. Get report(s) to evaluate ==========
     
-    llm_questions = GeminiLLM(
-            model_name=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_name'],
-            google_api_key=gemini_api_key,
-            model_params=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_params']
-        )
+    report_paths = []
+    eval_report_path = os.getenv('GRAPHRAG_EVAL_REPORT_PATH')
 
-    # ========== 2. Get latest report for the country for each retriever ==========
+    # If eval_report_path is provided, use it to find the specific report to evaluate
+    if eval_report_path:
+        if os.path.isfile(eval_report_path):
+            report_paths.append(eval_report_path)
+            print(f"Found specific report to evaluate: {eval_report_path}")
+            
+            # Try to parse country from filename, e.g., security_report_United_States_{retriever}_timestamp...
+            try:
+                filename = os.path.basename(eval_report_path)
+                # Build a regex pattern to match any of the known retriever names
+                retriever_pattern = '|'.join(kg_retrieval_config.keys())
+                
+                # The regex captures the country part of the filename.
+                # It looks for "security_report_", then captures everything (.+) until it finds
+                # one of the known retrievers, followed by a timestamp and the .md extension.
+                match = re.match(rf'security_report_(.+)_(?:{retriever_pattern})_\d{{8}}_\d{{4}}\.md$', filename)
+                
+                if match:
+                    # The country name is the first captured group. 
+                    # It will be in 'safe' format (e.g., "United_States").
+                    safe_country = match.group(1)
+                    # Convert back to original format for display/use.
+                    country = safe_country.replace('_', ' ')
+                    print(f"Parsed country '{country}' from filename.")
+                else:
+                    raise ValueError("Filename does not match expected pattern for parsing country.")
+
+            except Exception:
+                print("Warning: Could not parse country from report filename. Using default or environment variable.")
+                # Fallback to the value passed to the function or from the environment
+                country = country or os.getenv('GRAPHRAG_COUNTRY')
+        else:
+            print(f"Error: Specified report path does not exist: {eval_report_path}")
+            return
     
-    # Get the latest markdown files from the output directory of the reports
-    if country is None:
-        country = os.getenv('GRAPHRAG_COUNTRY')  # Get country from environment variable if not provided
-    if reports_output_directory is None:
-        reports_output_directory = os.getenv('GRAPHRAG_OUTPUT_DIR')  # Get output directory from environment variable if not provided
-    if accuracy_output_directory is None:
-        accuracy_output_directory = os.getenv('GRAPHRAG_ACCURACY_OUTPUT_DIR')  # Get accuracy output directory from environment variable if not provided
+    # If eval_report_path is not provided, we will look for the latest reports in the output directory
+    else:
+        # Get the latest markdown files from the output directory of the reports
+        if country is None:
+            country = os.getenv('GRAPHRAG_COUNTRY')  # Get country from environment variable if not provided
+        if reports_output_directory is None:
+            reports_output_directory = os.getenv('GRAPHRAG_OUTPUT_DIR')  # Get output directory from environment variable if not provided
+        if accuracy_output_directory is None:
+            accuracy_output_directory = os.getenv('GRAPHRAG_ACCURACY_OUTPUT_DIR')  # Get accuracy output directory from environment variable if not provided
 
-    if reports_output_directory:
-        country_reports_dir = os.path.join(reports_output_directory, country)
-    else:  # Fallback to default reports directory
-        reports_base_dir = os.path.join(graphrag_pipeline_dir.parent, 'reports')
-        country_reports_dir = os.path.join(reports_base_dir, country)
+        if not country:
+            print("Error: No country specified for evaluation. Use --retrieval <country> or set GRAPHRAG_COUNTRY.")
+            return
 
-    if not os.path.isdir(country_reports_dir):
-        print(f"Error: No reports directory found for country '{country}' at {country_reports_dir}")
-        return
+        if reports_output_directory:
+            country_reports_dir = os.path.join(reports_output_directory, country)
+        else:  # Fallback to default reports directory
+            reports_base_dir = os.path.join(graphrag_pipeline_dir.parent, 'reports')
+            country_reports_dir = os.path.join(reports_base_dir, country)
 
-    report_files = [os.path.join(country_reports_dir, f) for f in os.listdir(country_reports_dir) if f.endswith('.md')]
-    if not report_files:
-        print(f"Error: No markdown reports found in {country_reports_dir}")
-        return
+        if not os.path.isdir(country_reports_dir):
+            print(f"Error: No reports directory found for country '{country}' at {country_reports_dir}")
+            return
 
-    report_paths = []  # Initialize the path to save the latest report paths for each retriever used for GraphRAG
+        report_files = [os.path.join(country_reports_dir, f) for f in os.listdir(country_reports_dir) if f.endswith('.md')]
+        if not report_files:
+            print(f"Error: No markdown reports found in {country_reports_dir}")
+            return
 
-    # If country is specified, create a sanitized name for the country in the 
-    # same way as done for GraphRAGConstructionPipeline
-    if country:
+        # If country is specified, create a sanitized name for the country in the 
+        # same way as done for GraphRAGConstructionPipeline
         # Sanitize country name for filesystem
         safe_country = re.sub(r'[^\w\-]', '_', country)  # Replace any non-word characters with underscores
 
@@ -137,6 +163,26 @@ async def main(country: str = None, reports_output_directory: str = None, accura
     acc_evaluator = AccuracyEvaluator(
         base_claims_prompt=evaluation_config['accuracy_evaluation']['base_claims_prompt'],
         base_questions_prompt=evaluation_config['accuracy_evaluation']['base_questions_prompt']
+    )
+
+    # Initialize LLM for claims and questions
+    llm_claims = GeminiLLM(
+            model_name=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_name'],
+            google_api_key=gemini_api_key,
+            model_params=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_params']
+        )
+    
+    llm_questions = GeminiLLM(
+            model_name=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_name'],
+            google_api_key=gemini_api_key,
+            model_params=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_params']
+        )
+
+    # Initialize LLM for evaluation
+    llm_evaluator = GeminiLLM(
+        model_name=evaluation_config['accuracy_evaluation']['llm_evaluator_config']['model_name'],
+        google_api_key=gemini_api_key,
+        model_params=evaluation_config['accuracy_evaluation']['llm_evaluator_config']['model_params']
     )
 
     # Initialize LLM with GraphRAG configurations
@@ -219,16 +265,14 @@ async def main(country: str = None, reports_output_directory: str = None, accura
         for report in report_paths:
 
             print(f"Processing accuracy evaluation for report: {report}")
-            
-            evaluation_dict = {}
-            
+                        
             # Extract each section as different dictionary entries
             sections = report_processor.get_sections(file_path=report)  # sections: Dict[str, str] (key is section title, value is section content)
             
             # Iterate over each retriever class and initialize it
             for retriever_name, retriever_instance in retriever_classes.items():
                 
-                if evaluation_config['retrievers']['VectorRetriever'].get('enabled', False):
+                if evaluation_config['retrievers'][retriever_name].get('enabled', False):
                     print(f"Retriever '{retriever_name}' initialized successfully.")
                     
                     retriever_search_params = evaluation_config['retrievers'][retriever_name].get('search_params', None)  # Search parameters for the retriever (if not provided, default parameters will be used)
@@ -240,6 +284,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                         # From each section, extract claims and questions using the LLMs
                         # Result will be a dictionary with claims (keys) and questions (values)
+                        # We will call the LLM by as many times as there are sections in the report
+                        # times 2 (one for claims and one for questions). Therefore, if there
+                        # are, say, 5 sections in the report, we will call the LLM 10 times (
+                        # 5 times for claims and 5 times for questions).
                         claims_and_questions = acc_evaluator.get_claims_and_questions_one_section(
                             section_text=section_content,
                             llm_claims=llm_claims,
@@ -255,6 +303,9 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 continue
                         
                         section_claims_list = []  # List to store claims for the current section
+                        
+                        # ========== 5. Execute GraphRAG pipeline ==========
+
                         try:
 
                             graphrag = GraphRAG(
@@ -263,7 +314,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 prompt_template=rag_template  # RAG template for formatting the prompt
                             )
 
-                            for i, (claim, questions) in enumerate(claims_and_questions.items()):
+                            # We will run GraphRAG for each claim and its associated questions
+                            # This will run the LLM for as many times as claims in the report
+                            # (e.g., 40 times if there are 40 claims in the report)
+                            for claim, questions in claims_and_questions.items():
 
                                 formatted_query_text = evaluation_config['graphrag']['query_text'].format(
                                     claim=claim,
@@ -289,7 +343,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 
                                 # Create the claim data structure
                                 claim_data = {
-                                    f"claim_{i+1}": claim,
+                                    f"claim": claim,
                                     "questions": generated_answers
                                 }
                                 section_claims_list.append(claim_data)
@@ -304,19 +358,49 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         }
                         all_sections_results.append(section_result)
 
-                else:
-                    pass  # If the retriever is not enabled, skip it
+                    # The results are now stored in all_sections_results, which is a list of dictionaries
+                    # Each dictionary contains the section title and a list of claims with their questions and answers
+                    # Sample output structure:
+                    # [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': 'answer_1', ...}}, ...]}, ...]
+                    print(f"Completed processing for retriever '{retriever_name}' with {len(all_sections_results)} sections.")
+                    print("Resulting dictionary of claims, questions and answers for the first section:", all_sections_results[0] if all_sections_results else "No sections found.")
+
+                    # ========== 6. Evaluate claims, format, and save the report ==========
+                    
+                    if all_sections_results:
+                        print(f"Evaluating claims for report: {Path(report).name}")
+                        evaluated_data = acc_evaluator.evaluate_claims(
+                            llm_evaluator=llm_evaluator,
+                            sections_data=all_sections_results,
+                            base_eval_prompt=evaluation_config['accuracy_evaluation']['base_eval_prompt']
+                        )
+
+                        print("Formatting accuracy report...")
+                        report_content = acc_evaluator.format_accuracy_report(
+                            evaluated_data=evaluated_data,
+                            country=country,
+                            retriever_type=retriever_name
+                        )
+
+                        print("Saving accuracy report...")
+                        acc_evaluator.save_accuracy_report(
+                            report_content=report_content,
+                            original_report_path=report
+                        )
+                    else:
+                        print(f"No results generated for report {report}. Skipping evaluation.")
+
+                # If the retriever is not enabled, skip it
+                else:  
+                    pass  
 
         driver.close()
-
-# TO DO: LLM that iterates over all claims, questions and answers and answers whether
-# there is enough evidence to support the claim, and whether the answer is correct.
 
 if __name__ == "__main__":
     # Execute main function when script is run directly
     try:
         result = asyncio.run(main())
-        print(f"Indexing completed.")
+        print(f"Evaluation completed.")
     except Exception as e:
-        print(f"Error during indexing: {e}")
+        print(f"Error during evaluation: {e}")
         sys.exit(1)
