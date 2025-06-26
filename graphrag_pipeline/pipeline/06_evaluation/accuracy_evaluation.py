@@ -272,7 +272,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
             # Iterate over each retriever class and initialize it
             for retriever_name, retriever_instance in retriever_classes.items():
                 
-                if evaluation_config['retrievers']['VectorRetriever'].get('enabled', False):
+                if evaluation_config['retrievers'][retriever_name].get('enabled', False):
                     print(f"Retriever '{retriever_name}' initialized successfully.")
                     
                     retriever_search_params = evaluation_config['retrievers'][retriever_name].get('search_params', None)  # Search parameters for the retriever (if not provided, default parameters will be used)
