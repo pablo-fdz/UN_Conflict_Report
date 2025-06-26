@@ -262,12 +262,15 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 )        
         }
         
-        for report in report_paths:
+        for report_path in report_paths:
 
-            print(f"Processing accuracy evaluation for report: {report}")
+            report_filename = os.path.basename(report_path)
+            print(f"\n----- Evaluating Report: {report_filename} -----")
+
+            print(f"Processing accuracy evaluation for report: {report_path}")
                         
             # Extract each section as different dictionary entries
-            sections = report_processor.get_sections(file_path=report)  # sections: Dict[str, str] (key is section title, value is section content)
+            sections = report_processor.get_sections(file_path=report_path)  # sections: Dict[str, str] (key is section title, value is section content)
             
             # Iterate over each retriever class and initialize it
             for retriever_name, retriever_instance in retriever_classes.items():
@@ -368,7 +371,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                     # ========== 6. Evaluate claims, format, and save the report ==========
                     
                     if all_sections_results:
-                        print(f"Evaluating claims for report: {Path(report).name}")
+                        print(f"Evaluating claims for report: {Path(report_path).name}")
                         evaluated_data = acc_evaluator.evaluate_claims(
                             llm_evaluator=llm_evaluator,
                             sections_data=all_sections_results,
@@ -385,10 +388,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         print("Saving accuracy report...")
                         acc_evaluator.save_accuracy_report(
                             report_content=report_content,
-                            original_report_path=report
+                            original_report_path=report_path
                         )
                     else:
-                        print(f"No results generated for report {report}. Skipping evaluation.")
+                        print(f"No results generated for report {report_path}. Skipping evaluation.")
 
                 # If the retriever is not enabled, skip it
                 else:  
