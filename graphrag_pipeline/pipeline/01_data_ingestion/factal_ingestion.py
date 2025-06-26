@@ -30,7 +30,7 @@ def load_config():
     except json.JSONDecodeError:
         raise(f"Error parsing configuration file at {config_path}")
 
-def fetch_acled_data(api_key, start_date, end_date, countries=None):
+def fetch_factal_data(api_key, start_date, end_date, country=None):
     """
     Fetch data from Factal API.
     
@@ -38,7 +38,7 @@ def fetch_acled_data(api_key, start_date, end_date, countries=None):
         api_key: Factal API key
         start_date: Start date for data retrieval (YYYY-MM-DD)
         end_date: End date for data retrieval (YYYY-MM-DD)
-        countries: List of country codes to retrieve data for
+        country: Country name to retrieve data for
         
     Returns:
         DataFrame containing Factal data
@@ -55,8 +55,8 @@ def fetch_acled_data(api_key, start_date, end_date, countries=None):
         "format": "json"
     }
     
-    if countries:
-        params["countries"] = ",".join(countries)
+    if country:
+        params["country"] = ",".join(country)
     
     try:
         response = requests.get(url, params=params)
@@ -154,13 +154,13 @@ def main():
     api_key = config.get('api_key')
     start_date = config.get('start_date')
     end_date = config.get('end_date')
-    countries = config.get('countries')
+    country = config.get('country')
     
     if not api_key:
         raise("API key not found in configuration. Aborting ingestion.")
     
     # Execute the ingestion pipeline
-    raw_data = fetch_acled_data(api_key, start_date, end_date, countries)
+    raw_data = fetch_factal_data(api_key, start_date, end_date, country)
     processed_data = process_data(raw_data)
     save_data(processed_data)
     
