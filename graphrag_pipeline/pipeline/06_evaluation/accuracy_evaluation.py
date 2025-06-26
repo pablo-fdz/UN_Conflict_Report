@@ -61,36 +61,77 @@ async def main(country: str = None, reports_output_directory: str = None, accura
     
     gemini_api_key = os.getenv('GEMINI_API_KEY')
 
-    # ========== 2. Get latest report for the country for each retriever ==========
+    # ========== 2. Get report(s) to evaluate ==========
     
-    # Get the latest markdown files from the output directory of the reports
-    if country is None:
-        country = os.getenv('GRAPHRAG_COUNTRY')  # Get country from environment variable if not provided
-    if reports_output_directory is None:
-        reports_output_directory = os.getenv('GRAPHRAG_OUTPUT_DIR')  # Get output directory from environment variable if not provided
-    if accuracy_output_directory is None:
-        accuracy_output_directory = os.getenv('GRAPHRAG_ACCURACY_OUTPUT_DIR')  # Get accuracy output directory from environment variable if not provided
+    report_paths = []
+    eval_report_path = os.getenv('GRAPHRAG_EVAL_REPORT_PATH')
 
-    if reports_output_directory:
-        country_reports_dir = os.path.join(reports_output_directory, country)
-    else:  # Fallback to default reports directory
-        reports_base_dir = os.path.join(graphrag_pipeline_dir.parent, 'reports')
-        country_reports_dir = os.path.join(reports_base_dir, country)
+    # If eval_report_path is provided, use it to find the specific report to evaluate
+    if eval_report_path:
+        if os.path.isfile(eval_report_path):
+            report_paths.append(eval_report_path)
+            print(f"Found specific report to evaluate: {eval_report_path}")
+            
+            # Try to parse country from filename, e.g., security_report_United_States_{retriever}_timestamp...
+            try:
+                filename = os.path.basename(eval_report_path)
+                # Build a regex pattern to match any of the known retriever names
+                retriever_pattern = '|'.join(kg_retrieval_config.keys())
+                
+                # The regex captures the country part of the filename.
+                # It looks for "security_report_", then captures everything (.+) until it finds
+                # one of the known retrievers, followed by a timestamp and the .md extension.
+                match = re.match(rf'security_report_(.+)_(?:{retriever_pattern})_\d{{8}}_\d{{4}}\.md$', filename)
+                
+                if match:
+                    # The country name is the first captured group. 
+                    # It will be in 'safe' format (e.g., "United_States").
+                    safe_country = match.group(1)
+                    # Convert back to original format for display/use.
+                    country = safe_country.replace('_', ' ')
+                    print(f"Parsed country '{country}' from filename.")
+                else:
+                    raise ValueError("Filename does not match expected pattern for parsing country.")
 
-    if not os.path.isdir(country_reports_dir):
-        print(f"Error: No reports directory found for country '{country}' at {country_reports_dir}")
-        return
+            except Exception:
+                print("Warning: Could not parse country from report filename. Using default or environment variable.")
+                # Fallback to the value passed to the function or from the environment
+                country = country or os.getenv('GRAPHRAG_COUNTRY')
+        else:
+            print(f"Error: Specified report path does not exist: {eval_report_path}")
+            return
+    
+    # If eval_report_path is not provided, we will look for the latest reports in the output directory
+    else:
+        # Get the latest markdown files from the output directory of the reports
+        if country is None:
+            country = os.getenv('GRAPHRAG_COUNTRY')  # Get country from environment variable if not provided
+        if reports_output_directory is None:
+            reports_output_directory = os.getenv('GRAPHRAG_OUTPUT_DIR')  # Get output directory from environment variable if not provided
+        if accuracy_output_directory is None:
+            accuracy_output_directory = os.getenv('GRAPHRAG_ACCURACY_OUTPUT_DIR')  # Get accuracy output directory from environment variable if not provided
 
-    report_files = [os.path.join(country_reports_dir, f) for f in os.listdir(country_reports_dir) if f.endswith('.md')]
-    if not report_files:
-        print(f"Error: No markdown reports found in {country_reports_dir}")
-        return
+        if not country:
+            print("Error: No country specified for evaluation. Use --retrieval <country> or set GRAPHRAG_COUNTRY.")
+            return
 
-    report_paths = []  # Initialize the path to save the latest report paths for each retriever used for GraphRAG
+        if reports_output_directory:
+            country_reports_dir = os.path.join(reports_output_directory, country)
+        else:  # Fallback to default reports directory
+            reports_base_dir = os.path.join(graphrag_pipeline_dir.parent, 'reports')
+            country_reports_dir = os.path.join(reports_base_dir, country)
 
-    # If country is specified, create a sanitized name for the country in the 
-    # same way as done for GraphRAGConstructionPipeline
-    if country:
+        if not os.path.isdir(country_reports_dir):
+            print(f"Error: No reports directory found for country '{country}' at {country_reports_dir}")
+            return
+
+        report_files = [os.path.join(country_reports_dir, f) for f in os.listdir(country_reports_dir) if f.endswith('.md')]
+        if not report_files:
+            print(f"Error: No markdown reports found in {country_reports_dir}")
+            return
+
+        # If country is specified, create a sanitized name for the country in the 
+        # same way as done for GraphRAGConstructionPipeline
         # Sanitize country name for filesystem
         safe_country = re.sub(r'[^\w\-]', '_', country)  # Replace any non-word characters with underscores
 
