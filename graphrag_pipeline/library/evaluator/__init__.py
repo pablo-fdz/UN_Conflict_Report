@@ -1,2 +1,2 @@
-from accuracy_evaluator import AccuracyEvaluator
+from graphrag_pipeline.library.evaluator.accuracy_evaluator import AccuracyEvaluator
 from report_processor import ReportProcessor

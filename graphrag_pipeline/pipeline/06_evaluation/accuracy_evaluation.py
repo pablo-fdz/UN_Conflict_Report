@@ -20,16 +20,13 @@ from library.kg_builder.utilities import GeminiLLM
 from neo4j_graphrag.generation import RagTemplate
 from neo4j_graphrag.generation.graphrag import GraphRAG
 from library.evaluator import ReportProcessor, AccuracyEvaluator
-from library.kg_builder.utilities import GeminiLLM
 from neo4j_graphrag.retrievers import (
     VectorRetriever,
     VectorCypherRetriever,
     HybridRetriever,
-    HybridCypherRetriever,
-    Text2CypherRetriever,
+    HybridCypherRetriever
 )
 from library.kg_indexer import KGIndexer
-from neo4j_graphrag.schema import get_schema
 
 # Neo4j and Neo4j GraphRAG imports
 import neo4j
@@ -63,18 +60,6 @@ async def main(country: str = None, reports_output_directory: str = None, accura
     neo4j_password = os.getenv('NEO4J_PASSWORD')
     
     gemini_api_key = os.getenv('GEMINI_API_KEY')
-
-    llm_claims = GeminiLLM(
-            model_name=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_name'],
-            google_api_key=gemini_api_key,
-            model_params=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_params']
-        )
-    
-    llm_questions = GeminiLLM(
-            model_name=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_name'],
-            google_api_key=gemini_api_key,
-            model_params=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_params']
-        )
 
     # ========== 2. Get latest report for the country for each retriever ==========
     
@@ -137,6 +122,26 @@ async def main(country: str = None, reports_output_directory: str = None, accura
     acc_evaluator = AccuracyEvaluator(
         base_claims_prompt=evaluation_config['accuracy_evaluation']['base_claims_prompt'],
         base_questions_prompt=evaluation_config['accuracy_evaluation']['base_questions_prompt']
+    )
+
+    # Initialize LLM for claims and questions
+    llm_claims = GeminiLLM(
+            model_name=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_name'],
+            google_api_key=gemini_api_key,
+            model_params=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_params']
+        )
+    
+    llm_questions = GeminiLLM(
+            model_name=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_name'],
+            google_api_key=gemini_api_key,
+            model_params=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_params']
+        )
+
+    # Initialize LLM for evaluation
+    llm_evaluator = GeminiLLM(
+        model_name=evaluation_config['accuracy_evaluation']['llm_evaluator_config']['model_name'],
+        google_api_key=gemini_api_key,
+        model_params=evaluation_config['accuracy_evaluation']['llm_evaluator_config']['model_params']
     )
 
     # Initialize LLM with GraphRAG configurations
@@ -219,9 +224,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
         for report in report_paths:
 
             print(f"Processing accuracy evaluation for report: {report}")
-            
-            evaluation_dict = {}
-            
+                        
             # Extract each section as different dictionary entries
             sections = report_processor.get_sections(file_path=report)  # sections: Dict[str, str] (key is section title, value is section content)
             
@@ -240,6 +243,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                         # From each section, extract claims and questions using the LLMs
                         # Result will be a dictionary with claims (keys) and questions (values)
+                        # We will call the LLM by as many times as there are sections in the report
+                        # times 2 (one for claims and one for questions). Therefore, if there
+                        # are, say, 5 sections in the report, we will call the LLM 10 times (
+                        # 5 times for claims and 5 times for questions).
                         claims_and_questions = acc_evaluator.get_claims_and_questions_one_section(
                             section_text=section_content,
                             llm_claims=llm_claims,
@@ -255,6 +262,9 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 continue
                         
                         section_claims_list = []  # List to store claims for the current section
+                        
+                        # ========== 5. Execute GraphRAG pipeline ==========
+
                         try:
 
                             graphrag = GraphRAG(
@@ -263,7 +273,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 prompt_template=rag_template  # RAG template for formatting the prompt
                             )
 
-                            for i, (claim, questions) in enumerate(claims_and_questions.items()):
+                            # We will run GraphRAG for each claim and its associated questions
+                            # This will run the LLM for as many times as claims in the report
+                            # (e.g., 40 times if there are 40 claims in the report)
+                            for claim, questions in claims_and_questions.items():
 
                                 formatted_query_text = evaluation_config['graphrag']['query_text'].format(
                                     claim=claim,
@@ -289,7 +302,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 
                                 # Create the claim data structure
                                 claim_data = {
-                                    f"claim_{i+1}": claim,
+                                    f"claim": claim,
                                     "questions": generated_answers
                                 }
                                 section_claims_list.append(claim_data)
@@ -304,19 +317,49 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         }
                         all_sections_results.append(section_result)
 
-                else:
-                    pass  # If the retriever is not enabled, skip it
+                    # The results are now stored in all_sections_results, which is a list of dictionaries
+                    # Each dictionary contains the section title and a list of claims with their questions and answers
+                    # Sample output structure:
+                    # [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': 'answer_1', ...}}, ...]}, ...]
+                    print(f"Completed processing for retriever '{retriever_name}' with {len(all_sections_results)} sections.")
+                    print("Resulting dictionary of claims, questions and answers for the first section:", all_sections_results[0] if all_sections_results else "No sections found.")
+
+                    # ========== 6. Evaluate claims, format, and save the report ==========
+                    
+                    if all_sections_results:
+                        print(f"Evaluating claims for report: {Path(report).name}")
+                        evaluated_data = acc_evaluator.evaluate_claims(
+                            llm_evaluator=llm_evaluator,
+                            sections_data=all_sections_results,
+                            base_eval_prompt=evaluation_config['accuracy_evaluation']['base_eval_prompt']
+                        )
+
+                        print("Formatting accuracy report...")
+                        report_content = acc_evaluator.format_accuracy_report(
+                            evaluated_data=evaluated_data,
+                            country=country,
+                            retriever_type=retriever_name
+                        )
+
+                        print("Saving accuracy report...")
+                        acc_evaluator.save_accuracy_report(
+                            report_content=report_content,
+                            original_report_path=report
+                        )
+                    else:
+                        print(f"No results generated for report {report}. Skipping evaluation.")
+
+                # If the retriever is not enabled, skip it
+                else:  
+                    pass  
 
         driver.close()
-
-# TO DO: LLM that iterates over all claims, questions and answers and answers whether
-# there is enough evidence to support the claim, and whether the answer is correct.
 
 if __name__ == "__main__":
     # Execute main function when script is run directly
     try:
         result = asyncio.run(main())
-        print(f"Indexing completed.")
+        print(f"Evaluation completed.")
     except Exception as e:
-        print(f"Error during indexing: {e}")
+        print(f"Error during evaluation: {e}")
         sys.exit(1)
