@@ -1,6 +1,6 @@
 """
-ACLED data ingestion script (example, modify as needed). However, def main() is necessary to run the script as a standalone program.
-This script retrieves data from the ACLED API, processes it, and stores it in the appropriate location.
+Factal data ingestion script (example, modify as needed). However, def main() is necessary to run the script as a standalone program.
+This script retrieves data from the Factal API, processes it, and stores it in the appropriate location.
 """
 
 import os
@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 def load_config():
-    """Load configuration settings for ACLED data ingestion."""
+    """Load configuration settings for Factal data ingestion."""
     
     # Get the directory path of the current script
     script_dir = Path(__file__).parent
@@ -32,16 +32,16 @@ def load_config():
 
 def fetch_acled_data(api_key, start_date, end_date, countries=None):
     """
-    Fetch data from ACLED API.
+    Fetch data from Factal API.
     
     Args:
-        api_key: ACLED API key
+        api_key: Factal API key
         start_date: Start date for data retrieval (YYYY-MM-DD)
         end_date: End date for data retrieval (YYYY-MM-DD)
         countries: List of country codes to retrieve data for
         
     Returns:
-        DataFrame containing ACLED data
+        DataFrame containing Factal data
     """
     
     # Example API request logic
@@ -69,14 +69,14 @@ def fetch_acled_data(api_key, start_date, end_date, countries=None):
         return df
     
     except requests.RequestException as e:
-        raise(f"Error fetching data from ACLED API: {str(e)}")
+        raise(f"Error fetching data from Factal API: {str(e)}")
 
 def process_data(df):
     """
-    Process and clean the ACLED data.
+    Process and clean the Factal data.
     
     Args:
-        df: Raw DataFrame from ACLED API
+        df: Raw DataFrame from Factal API
         
     Returns:
         Processed DataFrame
@@ -142,13 +142,13 @@ def save_data(df, output_path=None):
 
 # Necessary defining main() for the program to run as a script
 def main():
-    """Main function to run the ACLED data ingestion pipeline."""
-    print("Starting ACLED data ingestion")
+    """Main function to run the Factal data ingestion pipeline."""
+    print("Starting Factal data ingestion")
     
     # Load configuration
     config = load_config()
     if not config:
-        raise("Failed to load configuration. Aborting ingestion.")
+        raise("Failed to load configuration. Aborting ingestion.") 
     
     # Extract parameters from config
     api_key = config.get('api_key')
@@ -164,7 +164,7 @@ def main():
     processed_data = process_data(raw_data)
     save_data(processed_data)
     
-    print("ACLED data ingestion completed successfully")
+    print("Factal data ingestion completed successfully")
 
 # Necessary to run the main function when this script is executed
 if __name__ == "__main__":
