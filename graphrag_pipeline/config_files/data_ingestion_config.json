@@ -1,7 +1,7 @@
 {
   "acled": {
-    "ingestion": false,
-    "include_in_kg": false,
+    "ingestion": true,
+    "include_in_kg": true,
     "start_date": "2025-05-01",
     "end_date": "2025-06-01",
     "country": "Spain"
@@ -10,7 +10,7 @@
     "ingestion": true,
     "include_in_kg": true,
     "start_date": "2025-05-01",
-    "end_date": "2025-06-01",
+    "end_date": "2025-05-31",
     "country": "Iran"
   },
   "google_news": {

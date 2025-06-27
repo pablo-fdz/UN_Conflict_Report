@@ -1,171 +1,254 @@
 """
-ACLED data ingestion script (example, modify as needed). However, def main() is necessary to run the script as a standalone program.
-This script retrieves data from the ACLED API, processes it, and stores it in the appropriate location.
+ACLED data ingestion script.
+This script retrieves data via the ACLED API, processes it, and stores it in "graphrag_pipeline/data" as "acled_{name of the country}_{date}.parquet".
 """
 
-import os
-import sys
+import io
 import json
-import logging
-import pandas as pd
-import requests
-from datetime import datetime
+import os
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
+
+import polars as pl
+import requests
+from dotenv import find_dotenv, load_dotenv
+
 
 def load_config():
-    """Load configuration settings for ACLED data ingestion."""
-    
-    # Get the directory path of the current script
     script_dir = Path(__file__).parent
-
-    # Navigate to config_files directory
-    config_path = script_dir / 'graphrag_pipeline' / 'config_files' / 'data_ingestion_config.json'
-    
+    config_path = script_dir.parent.parent / 'config_files' / 'data_ingestion_config.json'
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
             return config.get('acled', {})
     except FileNotFoundError:
-        raise(f"Configuration file not found at {config_path}")
+        raise FileNotFoundError(f"Configuration file not found at {config_path}")
     except json.JSONDecodeError:
-        raise(f"Error parsing configuration file at {config_path}")
+        raise ValueError(f"Error parsing configuration file at {config_path}")
 
-def fetch_acled_data(api_key, start_date, end_date, countries=None):
+print("Fetching ACLED data...")
+
+
+def get_acled_data(
+    country: str,
+    start_date: Optional[str] = None,     # YYYY-MM-DD or None
+    end_date:   Optional[str] = None,     # YYYY-MM-DD or None
+    limit:      Optional[int] = None,     # max rows to keep in memory
+    email:      Optional[str] = None,
+    api_key:    Optional[str] = None,
+) -> pl.DataFrame:
     """
-    Fetch data from ACLED API.
-    
-    Args:
-        api_key: ACLED API key
-        start_date: Start date for data retrieval (YYYY-MM-DD)
-        end_date: End date for data retrieval (YYYY-MM-DD)
-        countries: List of country codes to retrieve data for
-        
-    Returns:
-        DataFrame containing ACLED data
+    Retrieve event data from ACLED for a single country and return it
+    as a Polars DataFrame.
+
+    Parameters
+    ----------
+    country : str
+        Country name (e.g. "Sudan") or `iso` code accepted by the API.
+    start_date, end_date : str | None
+        Inclusive date window in YYYY-MM-DD format; omit for full history.
+    limit : int | None
+        If provided, truncate the DataFrame to this many rows *after* download.
+        The HTTP call itself requests all rows (`limit=0`) so you still get
+        complete coverage when the dataset is small.
+    email, api_key : str | None
+        ACLED credentials; fall back to env vars `ACLED_EMAIL` and
+        `ACLED_API_KEY` when omitted.
+
+    Returns
+    -------
+    pl.DataFrame
     """
     
-    # Example API request logic
-    url = "https://api.acleddata.com/acled/read"
+    load_dotenv(find_dotenv(), override=True)
+    country = country.capitalize()
+    
+    email = email or os.getenv("ACLED_EMAIL")
+    api_key = api_key or os.getenv("ACLED_API_KEY")
+    if not (email and api_key):
+        raise ValueError("ACLED credentials missing: set email & api_key.")
+
+    # Build query ------------------------------------------------------------
     params = {
-        "key": api_key,
-        "email": "your_registered_email@example.com",
-        "start_date": start_date,
-        "end_date": end_date,
-        "event_date_format": "YYYY-MM-DD",
-        "format": "json"
+        "email": email,
+        "key":   api_key,
+        "country": country,
+        "event_date": f"{start_date}|{end_date}",  # pipe-separated range
+        "event_date_where": "BETWEEN",
+        "format": "csv",
+        "limit": 0                                 # 0 = return *all* rows
     }
-    
-    if countries:
-        params["countries"] = ",".join(countries)
-    
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()  # Raise exception for HTTP errors
-        
-        data = response.json()
-        
-        # Convert to DataFrame
-        df = pd.DataFrame(data['data'])
-        return df
-    
-    except requests.RequestException as e:
-        raise(f"Error fetching data from ACLED API: {str(e)}")
+    if start_date:
+        params["event_date"] = start_date
+    if end_date:
+        params["event_date_end"] = end_date
 
-def process_data(df):
-    """
-    Process and clean the ACLED data.
-    
-    Args:
-        df: Raw DataFrame from ACLED API
-        
-    Returns:
-        Processed DataFrame
-    """
-    
-    if df.empty:
-        raise("No data to process")
-        return df
-    
-    try:
-        # Example processing steps
-        # 1. Drop duplicates
-        df = df.drop_duplicates()
-        
-        # 2. Convert date columns
-        date_cols = ['event_date', 'timestamp']
-        for col in date_cols:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col])
-        
-        # 3. Other cleaning steps
-        # ...
-        
-        print(f"Data processing complete. {len(df)} records after processing.")
-        return df
-    
-    except Exception as e:
-        raise(f"Error during data processing: {str(e)}")
+    url = "https://api.acleddata.com/acled/read.csv"
+    r = requests.get(url, params=params, timeout=60)
+    r.raise_for_status()
 
-def save_data(df, output_path=None):
-    """
-    Save the processed data.
+    # Read the CSV payload straight into Polars -----------------------------
+    results = pl.read_csv(io.BytesIO(r.content))
+
+    # Optional in-memory truncation (fast, keeps the API call simple) -------
+    if limit is not None and limit > 0:
+        results = df.head(limit)
+
+    return pl.DataFrame(results)
+
+
+def process_data(results, country):
+    if results.is_empty():
+        raise ValueError("No data to process")
+    results = results.unique()
+    for col in ['event_date', 'timestamp']:
+        if col in results.columns:
+            results = results.with_columns(pl.col(col).str.strptime(pl.Datetime, strict=False))
     
-    Args:
-        df: Processed DataFrame
-        output_path: Path to save the data
-    """
-    if df.empty:
-        raise("No data to save")
-    
-    try:
-        # Determine output path if not provided
-        if output_path is None:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            output_dir = Path(script_dir).parent.parent / 'data' / 'acled'
-            output_dir.mkdir(parents=True, exist_ok=True)
+    def extract_topics_to_df(df, column):
+        if column not in df.columns:
+            return pl.DataFrame()
+        all_topics = [
+            {**dict(topic), 'item_id': row['id']}
+            for row in df.iter_rows(named=True) if row[column]
+            for topic in row[column]
+        ]
+        if not all_topics:
+            return pl.DataFrame()
+        topics_df = pl.DataFrame(all_topics)
+        if 'topic' in topics_df.columns:
+            topics_flat = pl.DataFrame(topics_df['topic'].to_list())
+            topics_flat = topics_flat.with_columns(topics_df['item_id'])
+            return topics_flat.select(['item_id'] + [c for c in topics_flat.columns if c != 'item_id'])
+        return topics_df
+
+    def fill_categories(df):
+        return df.with_columns([
+            pl.when(pl.col("category") == "Country").then(pl.col("topic")).otherwise(None).alias("country"),
+            pl.when(pl.col("category") == "State").then(pl.col("topic")).otherwise(None).alias("state"),
+            pl.when(pl.col("category") == "Town").then(pl.col("topic")).otherwise(None).alias("town"),
+            pl.when(pl.col("category") == "POI").then(pl.col("topic")).otherwise(None).alias("location"),  # Changed from "poi" to "location"
+            pl.when(pl.col("kind") == "arc").then(pl.col("topic")).otherwise(None)
+                .str.replace(r" at \w+\+\w+, ", " at ")
+                .str.replace(r"^\w+\+\w+\s", "").alias("topic2"),
+            pl.when(pl.col("kind") == "vertical").then(pl.col("topic")).otherwise(None).alias("theme"),
+            pl.when(pl.col("kind") == "tag").then(pl.col("topic")).otherwise(None).alias("tag"),
+        ])
+
+    def group_by_acled_id(df):
+        def extract_country(state, country):
+            if state and isinstance(state, str) and ',' in state:
+                m = re.search(r',\s*([^,]+)$', state)
+                return m.group(1).strip() if m else country
+            return country
+
+        result_rows = []
+        for item_id in df['item_id'].unique():
+            id_data = df.filter(pl.col("item_id") == item_id)
+            first = id_data.row(0, named=True)
+            row = {k: first[k] for k in ["item_id", "url", "text", "domain", "date", "severity"]}
             
-            # Create filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = output_dir / f"acled_data_{timestamp}.csv"
-        
-        # Save the data
-        df.to_csv(output_path, index=False)
-        print(f"Data successfully saved to {output_path}")
-        
-        # Also save a copy as processed_data.csv for KG building step
-        processed_path = Path(output_path).parent / "processed_data.csv"
-        df.to_csv(processed_path, index=False)
-        print(f"Data also saved as {processed_path} for further processing")
-        
-    except Exception as e:
-        raise(f"Error saving data: {str(e)}")
+            # Only check for columns that exist in the DataFrame
+            for col in ["country", "state", "town", "location", "topic2", "theme", "tag"]:
+                if col in df.columns:
+                    vals = id_data.select(pl.col(col)).filter(pl.col(col).is_not_null()).unique().to_series().to_list()
+                    row[col] = vals[0] if vals else None
+                else:
+                    row[col] = None
+                    
+            row["country"] = extract_country(row.get("state"), row.get("country"))
+            row["topics"] = id_data.select(pl.col("topic")).unique().to_series().to_list()
+            summaries = id_data.select(pl.col("topic_summary")).filter(pl.col("topic_summary").is_not_null()).to_series().to_list()
+            row["topic_summary"] = summaries[0] if summaries else None
+            result_rows.append(row)
+        return pl.DataFrame(result_rows)
 
-# Necessary defining main() for the program to run as a script
-def main():
-    """Main function to run the ACLED data ingestion pipeline."""
-    print("Starting ACLED data ingestion")
+    topics_df = extract_topics_to_df(results, "topics")
+    items_merged = results.join(topics_df, left_on='id', right_on='item_id', how='left')
+
+    items_merged = items_merged.with_columns([
+        pl.when((pl.col('url') == '') & (pl.col('url_domain') == 'x.com'))
+          .then(pl.col('source') + pl.lit('/status/') + pl.col('tweet_id').cast(pl.Utf8))
+          .otherwise(pl.col('url')).alias('url'),
+        (pl.lit("acled_") + pl.col("id").cast(pl.Utf8)).alias("item_id")
+    ])
+
+    clean_df = items_merged.select([
+        'item_id',
+        'url',
+        pl.col('content').alias('text'),
+        pl.col('source').alias('domain'),
+        pl.col('date').str.to_datetime().dt.date(),
+        'severity',
+        pl.col('name').alias('topic'),
+        'kind',
+        'category',
+        pl.col('description').alias('topic_summary')
+    ])
+
+    clean_df = fill_categories(clean_df)
+    processed_data = group_by_acled_id(clean_df)
     
-    # Load configuration
+    # Create conditional location prefix based on availability of state/town/country
+    processed_data = processed_data.with_columns([
+        pl.when(pl.col("state").is_not_null())
+        .then(pl.concat_str([pl.lit("State, country: "), pl.col("state")]))
+        .when(pl.col("town").is_not_null())
+        .then(pl.concat_str([pl.lit("Town, country: "), pl.col("town")]))
+        .when(pl.col("country").is_not_null())
+        .then(pl.concat_str([pl.lit("Country: "), pl.col("country")]))
+        .otherwise(pl.lit("Location: N/A"))
+        .alias("location_prefix")
+    ])
+    
+    # Concatenate the metadata to the text column
+    processed_data = processed_data.with_columns([
+        pl.concat_str([
+            pl.col("location_prefix"),
+            pl.lit(". Theme: "),
+            pl.col("theme").fill_null("N/A"),
+            pl.lit(". Tag: "),
+            pl.col("tag").fill_null("N/A"),
+            pl.lit(". Topics: "),
+            pl.col("topics").list.join(", ").fill_null("N/A"),
+            pl.lit(". Text: "),
+            pl.col("text")
+        ]).alias("text")
+    ])
+    
+    # Remove the temporary location_prefix column
+    processed_data = processed_data.drop("location_prefix")
+    
+    processed_data = processed_data.with_columns(pl.lit(country).alias("country_keyword"))
+    processed_data = processed_data.rename({"topic2": "topic"})
+    processed_data = processed_data.select(["country_keyword"] + [c for c in processed_data.columns if c != "country_keyword"])
+    return processed_data
+
+
+def save_data(processed_data, country, start_date, end_date):
+    if processed_data.is_empty():
+        raise ValueError("No data to save.")
+    script_dir = Path(__file__).parent
+    output_dir = script_dir.parent.parent / 'data' / 'acled'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    prev_day = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+    date = f'{start_date}_{prev_day}' if start_date and end_date else f'generated_{datetime.now().strftime('%Y-%m-%d')}'
+    output_path = output_dir / f"acled_{country}_{date}.parquet"
+    processed_data.write_parquet(output_path)
+
+def main():
     config = load_config()
     if not config:
-        raise("Failed to load configuration. Aborting ingestion.")
-    
-    # Extract parameters from config
-    api_key = config.get('api_key')
+        raise ValueError("Failed to load configuration. Aborting ingestion.")
     start_date = config.get('start_date')
     end_date = config.get('end_date')
-    countries = config.get('countries')
-    
-    if not api_key:
-        raise("API key not found in configuration. Aborting ingestion.")
-    
-    # Execute the ingestion pipeline
-    raw_data = fetch_acled_data(api_key, start_date, end_date, countries)
-    processed_data = process_data(raw_data)
-    save_data(processed_data)
-    
-    print("ACLED data ingestion completed successfully")
+    country = config.get('country')
+    raw_data = get_acled_data(country, start_date=start_date, end_date=end_date)
+    processed_data = process_data(raw_data, country)
+    save_data(processed_data, country, start_date, end_date)
+    print("ACLED data file saved.")
 
-# Necessary to run the main function when this script is executed
 if __name__ == "__main__":
     main()

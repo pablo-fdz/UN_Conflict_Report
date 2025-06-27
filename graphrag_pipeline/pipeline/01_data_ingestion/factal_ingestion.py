@@ -218,8 +218,8 @@ def save_data(processed_data, country, start_date, end_date):
     script_dir = Path(__file__).parent
     output_dir = script_dir.parent.parent / 'data' / 'factal'
     output_dir.mkdir(parents=True, exist_ok=True)
-    prev_day = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
-    date = f'{start_date}_{prev_day}' if start_date and end_date else f'generated_{datetime.now().strftime('%Y-%m-%d')}'
+    date = f"{start_date}_{(datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')}" \
+    if start_date and end_date else f"generated_{datetime.now().strftime('%Y-%m-%d')}"
     output_path = output_dir / f"Factal_{country}_{date}.parquet"
     processed_data.write_parquet(output_path)
 
@@ -228,7 +228,7 @@ def main():
     if not config:
         raise ValueError("Failed to load configuration. Aborting ingestion.")
     start_date = config.get('start_date')
-    end_date = config.get('end_date')
+    end_date = (datetime.strptime(config.get('end_date'), '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
     country = config.get('country')
     raw_data = get_factal_data(country, start_date=start_date, end_date=end_date)
     processed_data = process_data(raw_data, country)
