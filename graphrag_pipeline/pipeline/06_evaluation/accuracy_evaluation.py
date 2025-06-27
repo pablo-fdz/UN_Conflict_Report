@@ -1,3 +1,9 @@
+"""
+Useful documentation:
+- Structured outputs in Gemini: https://ai.google.dev/gemini-api/docs/structured-output
+- Usage of BaseModel and RootModel in Pydantic: https://medium.com/@kishanbabariya101/episode-2-understanding-pydantic-models-basemodel-rootmodel-5e94bf2d2e34
+"""
+
 # Utilities
 import sys
 import os
@@ -20,6 +26,7 @@ from library.kg_builder.utilities import GeminiLLM
 from neo4j_graphrag.generation import RagTemplate
 from neo4j_graphrag.generation.graphrag import GraphRAG
 from library.evaluator import ReportProcessor, AccuracyEvaluator
+from library.evaluator.schemas import Claims, Questions, EvaluationResults
 from neo4j_graphrag.retrievers import (
     VectorRetriever,
     VectorCypherRetriever,
@@ -74,14 +81,20 @@ async def main(country: str = None, reports_output_directory: str = None, accura
             
             # Try to parse country from filename, e.g., security_report_United_States_{retriever}_timestamp...
             try:
+                # Extract the filename from the provided path
                 filename = os.path.basename(eval_report_path)
-                # Build a regex pattern to match any of the known retriever names
-                retriever_pattern = '|'.join(kg_retrieval_config.keys())
+                
+               # Build a regex pattern to match any of the known retriever names,
+                # allowing for an optional "Retriever" suffix.
+                retriever_keys = kg_retrieval_config.keys()
+                # Creates patterns like 'HybridCypher(?:Retriever)?'
+                patterns = [key.replace('Retriever', '(?:Retriever)?') for key in retriever_keys]
+                retriever_pattern = '|'.join(patterns)
                 
                 # The regex captures the country part of the filename.
-                # It looks for "security_report_", then captures everything (.+) until it finds
-                # one of the known retrievers, followed by a timestamp and the .md extension.
-                match = re.match(rf'security_report_(.+)_(?:{retriever_pattern})_\d{{8}}_\d{{4}}\.md$', filename)
+                # It looks for "security_report_", then captures everything (.+?) non-greedily until it finds
+                # one of the known retrievers (with or without "Retriever"), followed by a timestamp and the .md extension.
+                match = re.match(rf'security_report_(.+?)_(?:{retriever_pattern})_\d{{8}}_\d{{4}}\.md$', filename)
                 
                 if match:
                     # The country name is the first captured group. 
@@ -165,24 +178,34 @@ async def main(country: str = None, reports_output_directory: str = None, accura
         base_questions_prompt=evaluation_config['accuracy_evaluation']['base_questions_prompt']
     )
 
-    # Initialize LLM for claims and questions
+    # Initialize LLM for claims
+    llm_claims_config = evaluation_config['accuracy_evaluation']['llm_claims_config']
+    llm_claims_params = llm_claims_config.get('model_params', {}).copy()
+    llm_claims_params['response_schema'] = Claims  # Set the response schema for the LLM claims model
     llm_claims = GeminiLLM(
-            model_name=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_name'],
+            model_name=llm_claims_config['model_name'],
             google_api_key=gemini_api_key,
-            model_params=evaluation_config['accuracy_evaluation']['llm_claims_config']['model_params']
+            model_params=llm_claims_params
         )
     
+    # Initialize LLM for questions
+    llm_questions_config = evaluation_config['accuracy_evaluation']['llm_questions_config']
+    llm_questions_params = llm_questions_config.get('model_params', {}).copy()
+    llm_questions_params['response_schema'] = Questions  # Set the response schema for the LLM questions model
     llm_questions = GeminiLLM(
-            model_name=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_name'],
+            model_name=llm_questions_config['model_name'],
             google_api_key=gemini_api_key,
-            model_params=evaluation_config['accuracy_evaluation']['llm_questions_config']['model_params']
+            model_params=llm_questions_params
         )
 
     # Initialize LLM for evaluation
+    llm_evaluator_config = evaluation_config['accuracy_evaluation']['llm_evaluator_config']
+    llm_evaluator_params = llm_evaluator_config.get('model_params', {}).copy()
+    llm_evaluator_params['response_schema'] = EvaluationResults  # Set the response schema for the LLM evaluation model
     llm_evaluator = GeminiLLM(
-        model_name=evaluation_config['accuracy_evaluation']['llm_evaluator_config']['model_name'],
+        model_name=llm_evaluator_config['model_name'],
         google_api_key=gemini_api_key,
-        model_params=evaluation_config['accuracy_evaluation']['llm_evaluator_config']['model_params']
+        model_params=llm_evaluator_params
     )
 
     # Initialize LLM with GraphRAG configurations
@@ -224,6 +247,8 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
     with neo4j.GraphDatabase.driver(neo4j_uri,auth=(neo4j_username, neo4j_password)) as driver:
         
+        # ---------- 4.1. Initialization of classes dependent on driver ----------
+
         # Initialize the KG indexer
         indexer = KGIndexer(driver=driver)
         try:
@@ -262,16 +287,23 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 )        
         }
         
+        # ---------- 4.2. Getting claims and questions for each report and section ----------
+
+        llm_usage = 0  # Variable to track LLM usage for billing purposes
+
         for report_path in report_paths:
 
             report_filename = os.path.basename(report_path)
-            print(f"\n----- Evaluating Report: {report_filename} -----")
+            print(f"\n=== Evaluating Report: {report_filename} ===\n")
 
             print(f"Processing accuracy evaluation for report: {report_path}")
                         
             # Extract each section as different dictionary entries
             sections = report_processor.get_sections(file_path=report_path)  # sections: Dict[str, str] (key is section title, value is section content)
             
+            # Get the number of extracted sections
+            num_sections = len(sections)
+
             # Iterate over each retriever class and initialize it
             for retriever_name, retriever_instance in retriever_classes.items():
                 
@@ -284,26 +316,35 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                     # Iterate over each title and content pair in the sections dictionary
                     for section_title, section_content in sections.items():
+                        
+                        print(f"Processing section: {section_title}")
+                        print(f"First 30 characters of section content: {section_content[:30]}...")  # Debugging output
 
-                        # From each section, extract claims and questions using the LLMs
-                        # Result will be a dictionary with claims (keys) and questions (values)
-                        # We will call the LLM by as many times as there are sections in the report
-                        # times 2 (one for claims and one for questions). Therefore, if there
-                        # are, say, 5 sections in the report, we will call the LLM 10 times (
-                        # 5 times for claims and 5 times for questions).
-                        claims_and_questions = acc_evaluator.get_claims_and_questions_one_section(
-                            section_text=section_content,
-                            llm_claims=llm_claims,
-                            llm_questions=llm_questions
-                        )
+                        try:
+                            # From each section, extract claims and questions using the LLMs
+                            # Result will be a dictionary with claims (keys) and questions (values).
+                            # We will call the LLM by as many times as there are sections in the report
+                            # times 2 (one for claims and one for questions). Therefore, if there
+                            # are, say, 5 sections in the report, we will call the LLM 10 times (
+                            # 5 times for claims and 5 times for questions).
+                            claims_and_questions = acc_evaluator.get_claims_and_questions_one_section(
+                                section_text=section_content,
+                                llm_claims=llm_claims,
+                                llm_questions=llm_questions,
+                                structured_output=True
+                            )
+                            # This should output a dictionary where each key is 
+                            # a claim and the value is a list of questions related 
+                            # to that claim (e.g., {'claim_1': ['question_1', 'question_2'], 'claim_2': ['question_1'], ...})
+                        except Exception as e:
+                            print(f"Error extracting claims and questions from section '{section_title}': {e}")
+                            continue
+                        
+                        print(f"Extracted {len(claims_and_questions)} claims and questions from section '{section_title}'.")
+                        print(f"First claim: {list(claims_and_questions.keys())[0] if claims_and_questions else 'No claims found'}")
+                        print(f"First question for first claim: {claims_and_questions[list(claims_and_questions.keys())[0]][0] if claims_and_questions and list(claims_and_questions.keys()) else 'No questions found'}")
 
-                        # If the claims_and_questions is not a dictionary, try to parse it as JSON
-                        if not isinstance(claims_and_questions, dict):
-                            try:
-                                claims_and_questions = json.loads(claims_and_questions)
-                            except Exception as e:
-                                print(f"Failed to parse claims_and_questions as JSON: {e}")
-                                continue
+                        llm_usage += 2  # Increment LLM usage for claims and questions extraction
                         
                         section_claims_list = []  # List to store claims for the current section
                         
@@ -334,8 +375,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                     return_context=evaluation_config.get('return_context', True),  # Whether to return the context used for generating the answer (defaults to True)
                                 )
 
+                                llm_usage += 1  # Increment LLM usage by 1 for GraphRAG search
+
                                 # Get the generated answer from the GraphRAG results
-                                generated_answers = graphrag_results.answer  # Assuming the generated answer is a dictionary containing questions as keys and asnwers as values
+                                generated_answers = graphrag_results.answer  # Assuming the generated answer is a dictionary containing questions as keys and asnwers as values (e.g., {'question_1': 'answer_1', 'question_2': 'answer_2', ...})
                             
                                 if not isinstance(generated_answers, dict):
                                     try:
@@ -346,7 +389,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 
                                 # Create the claim data structure
                                 claim_data = {
-                                    f"claim": claim,
+                                    "claim": claim,
                                     "questions": generated_answers
                                 }
                                 section_claims_list.append(claim_data)
@@ -370,13 +413,17 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                     # ========== 6. Evaluate claims, format, and save the report ==========
                     
+                    # Evaluation is done individually for each of the sections in the report
                     if all_sections_results:
                         print(f"Evaluating claims for report: {Path(report_path).name}")
                         evaluated_data = acc_evaluator.evaluate_claims(
                             llm_evaluator=llm_evaluator,
                             sections_data=all_sections_results,
-                            base_eval_prompt=evaluation_config['accuracy_evaluation']['base_eval_prompt']
+                            base_eval_prompt=evaluation_config['accuracy_evaluation']['base_eval_prompt'],
+                            structured_output=True  # Use structured output for the evaluation results for better consistency
                         )
+
+                        llm_usage += 1 * num_sections  # Increment LLM usage by number of sections evaluated
 
                         print("Formatting accuracy report...")
                         report_content = acc_evaluator.format_accuracy_report(
@@ -396,6 +443,8 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 # If the retriever is not enabled, skip it
                 else:  
                     pass  
+        
+        print(f"\n=== Rough estimate of the number of LLM requests (potential overestimation): {llm_usage} ===\n")
 
         driver.close()
 

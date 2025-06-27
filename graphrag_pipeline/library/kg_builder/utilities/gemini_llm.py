@@ -16,6 +16,18 @@ from neo4j_graphrag.llm import LLMInterface, LLMResponse
 from neo4j_graphrag.message_history import MessageHistory
 from neo4j_graphrag.types import LLMMessage
 
+class GeminiLLMResponse(LLMResponse):
+    """
+    A custom response object that extends the base LLMResponse to include
+    the parsed Pydantic model from Gemini's structured output (apart from the `.content` field, 
+    which must ALWAYS be a string - see LLMResponse class). Adding this field should 
+    not break compatibility with existing code that uses LLMResponse,
+    as the functions and classes from neo4j-graphrag expect an LLMResponse object
+    with a `.content` field (a str) containing the text response from the model (which is 
+    extracted from the Gemini model's response). See for example the usage in the
+    GraphRAG class in the neo4j-graphrag library.
+    """
+    parsed: Optional[Any] = None
 
 class GeminiLLM(LLMInterface):
     """
@@ -24,6 +36,38 @@ class GeminiLLM(LLMInterface):
     This implementation uses the `google-genai` library, which provides a unified client
     for both Gemini and Vertex AI APIs. It is designed to be a drop-in replacement for
     other LLM interfaces within the neo4j-graphrag framework.
+
+    Example usage:
+    .. code-block:: python
+        from graphrag_pipeline.library.kg_builder.utilities.gemini_llm import GeminiLLM
+        from pydantic import RootModel, Field
+        from typing import List
+
+        # Create a pydantic model for structured output.
+        class Claims(RootModel[List[str]]):
+            root: List[str] = Field(
+                description="A list of verifiable claims, where each claim is a self-contained, atomic statement that can be checked for accuracy."
+            )
+
+        # Initialize the Gemini LLM client with your model name and Google API key.
+        llm = GeminiLLM(
+            model_name="gemini-2.5-flash",
+            google_api_key="YOUR_GOOGLE_API_KEY",
+            model_params={
+                "temperature": 0.7, 
+                "max_output_tokens": 1024,
+                "response_mime_type": "application/json",
+                "response_schema": Claims
+            },
+            default_system_instruction="You are a helpful assistant."
+        )
+
+        # Invoke the model with a user prompt.
+        response = llm.invoke(input="What are the verifiable claims in the following text? 'The capital of France is Paris. The Eiffel Tower is in Paris.'")
+
+        # The response will contain the text and parsed data.
+        print(response.content)  # The text response from the model.
+        print(response.parsed)   # The parsed structured output, if applicable. If the model's response is structured, this will contain the parsed data, in the type of the Claims model.
     """
 
     def __init__(
@@ -135,8 +179,9 @@ class GeminiLLM(LLMInterface):
                 contents=messages,
                 config=generation_config,
             )
-            # Extract the text from the response and wrap it in an LLMResponse object.
-            return LLMResponse(content=response.text)
+           # Extract the text and parsed data from the response.
+            parsed_data = getattr(response, 'parsed', None)  # Check if the response has parsed data, defaults to None
+            return GeminiLLMResponse(content=response.text, parsed=parsed_data)
         except Exception as e:
             # If any exception occurs, wrap it in LLMGenerationError as expected by the interface.
             raise LLMGenerationError(f"Error invoking Gemini model: {e}") from e
@@ -182,8 +227,9 @@ class GeminiLLM(LLMInterface):
                 contents=messages,
                 config=generation_config,
             )
-            # Extract the text from the response and wrap it in an LLMResponse object.
-            return LLMResponse(content=response.text)
+            # Extract the text and parsed data from the response.
+            parsed_data = getattr(response, 'parsed', None)
+            return GeminiLLMResponse(content=response.text, parsed=parsed_data)
         except Exception as e:
             # If any exception occurs, wrap it in LLMGenerationError.
             raise LLMGenerationError(
