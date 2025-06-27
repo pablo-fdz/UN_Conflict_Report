@@ -19,7 +19,7 @@ def load_config():
     script_dir = Path(__file__).parent
 
     # Navigate to config_files directory
-    config_path = Path(script_dir).parent.parent / 'config_files' / 'data_ingestion_config.json'
+    config_path = script_dir / 'graphrag_pipeline' / 'config_files' / 'data_ingestion_config.json'
     
     try:
         with open(config_path, 'r') as f:
