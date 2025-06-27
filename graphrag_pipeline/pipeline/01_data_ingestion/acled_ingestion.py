@@ -6,8 +6,7 @@ This script retrieves data via the ACLED API, processes it, and stores it in "gr
 import io
 import json
 import os
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -15,227 +14,157 @@ import polars as pl
 import requests
 from dotenv import find_dotenv, load_dotenv
 
-
 def load_config():
-    script_dir = Path(__file__).parent
-    config_path = script_dir.parent.parent / 'config_files' / 'data_ingestion_config.json'
+    config_path = Path(__file__).parent.parent.parent / 'config_files' / 'data_ingestion_config.json'
     try:
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-            return config.get('acled', {})
+        return json.loads(config_path.read_text()).get('acled', {})
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
     except json.JSONDecodeError:
         raise ValueError(f"Error parsing configuration file at {config_path}")
 
-print("Fetching ACLED data...")
-
+config = load_config()
+country = config.get('country')    
+print(f"Fetching ACLED data for {country}...")
 
 def get_acled_data(
     country: str,
-    start_date: Optional[str] = None,     # YYYY-MM-DD or None
-    end_date:   Optional[str] = None,     # YYYY-MM-DD or None
-    limit:      Optional[int] = None,     # max rows to keep in memory
-    email:      Optional[str] = None,
-    api_key:    Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: Optional[int] = None,
+    email: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> pl.DataFrame:
-    """
-    Retrieve event data from ACLED for a single country and return it
-    as a Polars DataFrame.
 
-    Parameters
-    ----------
-    country : str
-        Country name (e.g. "Sudan") or `iso` code accepted by the API.
-    start_date, end_date : str | None
-        Inclusive date window in YYYY-MM-DD format; omit for full history.
-    limit : int | None
-        If provided, truncate the DataFrame to this many rows *after* download.
-        The HTTP call itself requests all rows (`limit=0`) so you still get
-        complete coverage when the dataset is small.
-    email, api_key : str | None
-        ACLED credentials; fall back to env vars `ACLED_EMAIL` and
-        `ACLED_API_KEY` when omitted.
-
-    Returns
-    -------
-    pl.DataFrame
-    """
-    
     load_dotenv(find_dotenv(), override=True)
     country = country.capitalize()
-    
     email = email or os.getenv("ACLED_EMAIL")
     api_key = api_key or os.getenv("ACLED_API_KEY")
     if not (email and api_key):
         raise ValueError("ACLED credentials missing: set email & api_key.")
 
-    # Build query ------------------------------------------------------------
     params = {
         "email": email,
-        "key":   api_key,
+        "key": api_key,
         "country": country,
-        "event_date": f"{start_date}|{end_date}",  # pipe-separated range
-        "event_date_where": "BETWEEN",
         "format": "csv",
-        "limit": 0                                 # 0 = return *all* rows
+        "limit": 0
     }
-    if start_date:
-        params["event_date"] = start_date
-    if end_date:
-        params["event_date_end"] = end_date
+    if start_date and end_date:
+        params.update({"event_date": f"{start_date}|{end_date}", "event_date_where": "BETWEEN"})
+    elif start_date:
+        params.update({"event_date": start_date, "event_date_where": ">="})
+    elif end_date:
+        params.update({"event_date": end_date, "event_date_where": "<="})
 
-    url = "https://api.acleddata.com/acled/read.csv"
-    r = requests.get(url, params=params, timeout=60)
+    r = requests.get("https://api.acleddata.com/acled/read.csv", params=params, timeout=60)
     r.raise_for_status()
-
-    # Read the CSV payload straight into Polars -----------------------------
     results = pl.read_csv(io.BytesIO(r.content))
-
-    # Optional in-memory truncation (fast, keeps the API call simple) -------
-    if limit is not None and limit > 0:
-        results = df.head(limit)
-
-    return pl.DataFrame(results)
-
+    return results.head(limit) if limit else results
 
 def process_data(results, country):
     if results.is_empty():
         raise ValueError("No data to process")
-    results = results.unique()
-    for col in ['event_date', 'timestamp']:
-        if col in results.columns:
-            results = results.with_columns(pl.col(col).str.strptime(pl.Datetime, strict=False))
-    
-    def extract_topics_to_df(df, column):
-        if column not in df.columns:
-            return pl.DataFrame()
-        all_topics = [
-            {**dict(topic), 'item_id': row['id']}
-            for row in df.iter_rows(named=True) if row[column]
-            for topic in row[column]
-        ]
-        if not all_topics:
-            return pl.DataFrame()
-        topics_df = pl.DataFrame(all_topics)
-        if 'topic' in topics_df.columns:
-            topics_flat = pl.DataFrame(topics_df['topic'].to_list())
-            topics_flat = topics_flat.with_columns(topics_df['item_id'])
-            return topics_flat.select(['item_id'] + [c for c in topics_flat.columns if c != 'item_id'])
-        return topics_df
 
-    def fill_categories(df):
-        return df.with_columns([
-            pl.when(pl.col("category") == "Country").then(pl.col("topic")).otherwise(None).alias("country"),
-            pl.when(pl.col("category") == "State").then(pl.col("topic")).otherwise(None).alias("state"),
-            pl.when(pl.col("category") == "Town").then(pl.col("topic")).otherwise(None).alias("town"),
-            pl.when(pl.col("category") == "POI").then(pl.col("topic")).otherwise(None).alias("location"),  # Changed from "poi" to "location"
-            pl.when(pl.col("kind") == "arc").then(pl.col("topic")).otherwise(None)
-                .str.replace(r" at \w+\+\w+, ", " at ")
-                .str.replace(r"^\w+\+\w+\s", "").alias("topic2"),
-            pl.when(pl.col("kind") == "vertical").then(pl.col("topic")).otherwise(None).alias("theme"),
-            pl.when(pl.col("kind") == "tag").then(pl.col("topic")).otherwise(None).alias("tag"),
-        ])
-
-    def group_by_acled_id(df):
-        def extract_country(state, country):
-            if state and isinstance(state, str) and ',' in state:
-                m = re.search(r',\s*([^,]+)$', state)
-                return m.group(1).strip() if m else country
-            return country
-
-        result_rows = []
-        for item_id in df['item_id'].unique():
-            id_data = df.filter(pl.col("item_id") == item_id)
-            first = id_data.row(0, named=True)
-            row = {k: first[k] for k in ["item_id", "url", "text", "domain", "date", "severity"]}
-            
-            # Only check for columns that exist in the DataFrame
-            for col in ["country", "state", "town", "location", "topic2", "theme", "tag"]:
-                if col in df.columns:
-                    vals = id_data.select(pl.col(col)).filter(pl.col(col).is_not_null()).unique().to_series().to_list()
-                    row[col] = vals[0] if vals else None
-                else:
-                    row[col] = None
-                    
-            row["country"] = extract_country(row.get("state"), row.get("country"))
-            row["topics"] = id_data.select(pl.col("topic")).unique().to_series().to_list()
-            summaries = id_data.select(pl.col("topic_summary")).filter(pl.col("topic_summary").is_not_null()).to_series().to_list()
-            row["topic_summary"] = summaries[0] if summaries else None
-            result_rows.append(row)
-        return pl.DataFrame(result_rows)
-
-    topics_df = extract_topics_to_df(results, "topics")
-    items_merged = results.join(topics_df, left_on='id', right_on='item_id', how='left')
-
-    items_merged = items_merged.with_columns([
-        pl.when((pl.col('url') == '') & (pl.col('url_domain') == 'x.com'))
-          .then(pl.col('source') + pl.lit('/status/') + pl.col('tweet_id').cast(pl.Utf8))
-          .otherwise(pl.col('url')).alias('url'),
-        (pl.lit("acled_") + pl.col("id").cast(pl.Utf8)).alias("item_id")
+    results = results.with_columns([
+        pl.when(pl.col("tags") == "crowd size=no report").then(None).otherwise(pl.col("tags")).alias("tags"),
+        (pl.lit("acled_") + pl.col("event_id_cnty").cast(pl.Utf8)).alias("item_id")
     ])
 
-    clean_df = items_merged.select([
-        'item_id',
-        'url',
-        pl.col('content').alias('text'),
-        pl.col('source').alias('domain'),
-        pl.col('date').str.to_datetime().dt.date(),
-        'severity',
-        pl.col('name').alias('topic'),
-        'kind',
-        'category',
-        pl.col('description').alias('topic_summary')
+    processed_data = results.select([
+        "item_id",
+        pl.col("event_date").str.to_datetime().dt.date().alias("date"),
+        pl.col("notes").alias("text"),
+        pl.col("source").alias("domain"),
+        "event_type", "sub_event_type", "actor1", "assoc_actor_1", "actor2", "assoc_actor_2", "interaction",
+        "country",
+        pl.col("admin1").alias("state"),
+        pl.col("admin2").alias("town"),
+        "location", "fatalities", "tags"
     ])
 
-    clean_df = fill_categories(clean_df)
-    processed_data = group_by_acled_id(clean_df)
-    
-    # Create conditional location prefix based on availability of state/town/country
     processed_data = processed_data.with_columns([
-        pl.when(pl.col("state").is_not_null())
-        .then(pl.concat_str([pl.lit("State, country: "), pl.col("state")]))
-        .when(pl.col("town").is_not_null())
-        .then(pl.concat_str([pl.lit("Town, country: "), pl.col("town")]))
-        .when(pl.col("country").is_not_null())
-        .then(pl.concat_str([pl.lit("Country: "), pl.col("country")]))
-        .otherwise(pl.lit("Location: N/A"))
-        .alias("location_prefix")
+        pl.when(pl.col("country").is_not_null())
+        .then(pl.concat_str([
+            pl.lit("Country: "), pl.col("country"),
+            pl.lit(". State: "), pl.col("state"),
+            pl.lit(". Town: "), pl.col("town"), pl.lit(". ")
+        ])).otherwise(pl.lit("Location: N/A. ")).alias("location_prefix")
     ])
-    
-    # Concatenate the metadata to the text column
+
+    actor_expr = lambda actor, assoc: pl.when(pl.col(actor).is_not_null()).then(
+        pl.col(actor) +
+        pl.when(pl.col(assoc).is_not_null())
+        .then(pl.concat_str([pl.lit(" (associated with: "), pl.col(assoc), pl.lit(")")]))
+        .otherwise(pl.lit(""))
+    ).otherwise(pl.lit(""))
+
+    actors_prefix_expr = pl.concat_str([
+        pl.when(pl.col("interaction").is_not_null())
+        .then(pl.concat_str([pl.lit(" Opposing sides: "), pl.col("interaction"), pl.lit(".")]))
+        .otherwise(pl.lit("")),
+        pl.when(pl.col("actor1").is_not_null())
+        .then(pl.concat_str([pl.lit(" Actor 1: "), actor_expr("actor1", "assoc_actor_1"), pl.lit(".")]))
+        .otherwise(pl.lit("")),
+        pl.when(pl.col("actor2").is_not_null())
+        .then(pl.concat_str([pl.lit(" Actor 2: "), actor_expr("actor2", "assoc_actor_2"), pl.lit(".")]))
+        .otherwise(pl.lit(""))
+    ])
+
+    processed_data = processed_data.with_columns(
+        pl.when(
+            pl.any_horizontal(
+                pl.col("interaction").is_not_null(),
+                pl.col("actor1").is_not_null(),
+                pl.col("actor2").is_not_null(),
+                pl.col("assoc_actor_1").is_not_null(),
+                pl.col("assoc_actor_2").is_not_null(),
+            )
+        )
+        .then(actors_prefix_expr)
+        .otherwise(pl.lit(" Participants: N/A."))
+        .alias("actors_prefix")
+    )
+
     processed_data = processed_data.with_columns([
+        pl.when(pl.col("event_type").is_not_null())
+        .then(pl.concat_str([
+            pl.lit(" Type of event: "), pl.col("event_type"),
+            pl.lit(" ("), pl.col("sub_event_type"), pl.lit(").")
+        ]))
+        .otherwise(pl.lit(" Event type: N/A."))
+        .alias("event_prefix")
+    ])
+
+    processed_data = processed_data.with_columns(
         pl.concat_str([
             pl.col("location_prefix"),
-            pl.lit(". Theme: "),
-            pl.col("theme").fill_null("N/A"),
-            pl.lit(". Tag: "),
-            pl.col("tag").fill_null("N/A"),
-            pl.lit(". Topics: "),
-            pl.col("topics").list.join(", ").fill_null("N/A"),
-            pl.lit(". Text: "),
-            pl.col("text")
-        ]).alias("text")
-    ])
-    
-    # Remove the temporary location_prefix column
-    processed_data = processed_data.drop("location_prefix")
-    
-    processed_data = processed_data.with_columns(pl.lit(country).alias("country_keyword"))
-    processed_data = processed_data.rename({"topic2": "topic"})
-    processed_data = processed_data.select(["country_keyword"] + [c for c in processed_data.columns if c != "country_keyword"])
-    return processed_data
+            pl.lit("Text: "),
+            pl.col("text"),
+            pl.lit(" Number of fatalities: "),
+            pl.col("fatalities").fill_null(0).cast(pl.Utf8 ).replace("", "0"),
+            pl.lit(". "),
+            pl.col("actors_prefix"),
+            pl.col("event_prefix"),
+            pl.when(pl.col("tags").is_not_null())
+            .then(pl.concat_str([pl.lit(" Number of participants: "), pl.col("tags")]))
+            .otherwise(pl.lit("")),
+            pl.lit(".")
+        ])
+        .alias("text")
+    )
 
+    processed_data = processed_data.drop(["location_prefix", "actors_prefix", "event_prefix"])
+    processed_data = processed_data.with_columns(pl.lit(country).alias("country_keyword"))
+    return processed_data.select(["country_keyword"] + [c for c in processed_data.columns if c != "country_keyword"])
 
 def save_data(processed_data, country, start_date, end_date):
     if processed_data.is_empty():
         raise ValueError("No data to save.")
-    script_dir = Path(__file__).parent
-    output_dir = script_dir.parent.parent / 'data' / 'acled'
+    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled'
     output_dir.mkdir(parents=True, exist_ok=True)
-    prev_day = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
-    date = f'{start_date}_{prev_day}' if start_date and end_date else f'generated_{datetime.now().strftime('%Y-%m-%d')}'
-    output_path = output_dir / f"acled_{country}_{date}.parquet"
+    date = f'{start_date}_{end_date}' if start_date and end_date else f'generated_{datetime.now():%Y-%m-%d}'
+    output_path = output_dir / f"Acled_{country}_{date}.parquet"
     processed_data.write_parquet(output_path)
 
 def main():

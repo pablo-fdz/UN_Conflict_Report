@@ -25,7 +25,9 @@ def load_config():
     except json.JSONDecodeError:
         raise ValueError(f"Error parsing configuration file at {config_path}")
 
-print("Fetching Factal data...")
+config = load_config()
+country = config.get('country')    
+print(f"Fetching Factal data for {country}...")
 
 def get_factal_data(
     country,
@@ -192,14 +194,16 @@ def process_data(results, country):
     processed_data = processed_data.with_columns([
         pl.concat_str([
             pl.col("location_prefix"),
+            pl.lit(". Text: "),
+            pl.col("text"),
+            pl.lit(". Severity (from 1 to 4): "),
+            pl.col("severity").fill_null("N/A"),
             pl.lit(". Theme: "),
             pl.col("theme").fill_null("N/A"),
             pl.lit(". Tag: "),
             pl.col("tag").fill_null("N/A"),
             pl.lit(". Topics: "),
-            pl.col("topics").list.join(", ").fill_null("N/A"),
-            pl.lit(". Text: "),
-            pl.col("text")
+            pl.col("topics").list.join(", ").fill_null("N/A."),
         ]).alias("text")
     ])
     

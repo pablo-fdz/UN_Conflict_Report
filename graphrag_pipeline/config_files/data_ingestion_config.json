@@ -3,8 +3,8 @@
     "ingestion": true,
     "include_in_kg": true,
     "start_date": "2025-05-01",
-    "end_date": "2025-06-01",
-    "country": "Spain"
+    "end_date": "2025-05-31",
+    "country": "Sudan"
   },
   "factal": {
     "ingestion": true,
