@@ -21,7 +21,6 @@ from dotenv import load_dotenv
 import os
 import json
 import re
-import time
 from neo4j_graphrag.embeddings import SentenceTransformerEmbeddings
 from library.kg_builder.utilities import GeminiLLM, get_rate_limit_checker
 from neo4j_graphrag.generation import RagTemplate
@@ -339,6 +338,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                     # Iterate over each title and content pair in the sections dictionary
                     for section_title, section_content in sections.items():
+                        
+                        # Avoid evaluating 'Sources' and 'References' sections
+                        if section_title.lower() in ['sources', 'references']:
+                            continue  # Skip these sections
                         
                         print(f"Processing section: {section_title}")
                         print(f"First 30 characters of section content: {section_content[:30]}...")  # Debugging output
