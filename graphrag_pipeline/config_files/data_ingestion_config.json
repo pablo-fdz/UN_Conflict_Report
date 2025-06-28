@@ -6,6 +6,11 @@
     "end_date": "2025-05-31",
     "country": "Sudan"
   },
+  "acled_cast": {
+    "country": "Sudan",
+    "window": 1,
+    "horizon": 2
+  },
   "factal": {
     "ingestion": true,
     "include_in_kg": true,
