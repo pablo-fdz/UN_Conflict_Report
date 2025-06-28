@@ -3,12 +3,16 @@ Useful documentation:
 - google-genai library: https://googleapis.github.io/python-genai/index.html
 - API documentation of neo4j-graphrag for design of custom LLMInterface: https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#llminterface
 - User guide of neo4j-graphrag for design of custom LLMInterface: https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#using-a-custom-model
+- Avoiding resource exhaustion with the Google Gemini API and tenacity: https://cloud.google.com/blog/products/ai-machine-learning/learn-how-to-handle-429-resource-exhaustion-errors-in-your-llms.
+    - More solutions here: https://support.google.com/gemini/thread/343007251/resource-exhausted-though-to-my-knowledge-staying-within-quotas?hl=en
 """
 
 from typing import Any, List, Optional, Union
+from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 # Import the official Google Generative AI library
 from google import genai
+from google.api_core.exceptions import ResourceExhausted
 
 # Import necessary components from the neo4j-graphrag library
 from neo4j_graphrag.exceptions import LLMGenerationError
@@ -140,6 +144,14 @@ class GeminiLLM(LLMInterface):
         messages.append({"role": "user", "parts": [{"text": input}]})
         return messages
 
+    # Retry "Randomly wait up to 2^x * 1 seconds between each retry until the
+    # range reaches 60 seconds, then randomly up to 60 seconds afterwards"
+    # We will retry up to 5 times on ResourceExhausted errors.
+    @retry(
+        wait=wait_random_exponential(multiplier=1, max=60),
+        stop=stop_after_attempt(5),
+        retry_error_callback=lambda retry_state: retry_state.outcome.result()
+    )
     def invoke(
         self,
         input: str,
@@ -148,6 +160,7 @@ class GeminiLLM(LLMInterface):
     ) -> LLMResponse:
         """
         Invokes the Gemini model synchronously with a given prompt and conversation history.
+        Includes a retry mechanism for handling resource exhaustion errors.
 
         Args:
             input (str): The text prompt to send to the model.
@@ -179,13 +192,24 @@ class GeminiLLM(LLMInterface):
                 contents=messages,
                 config=generation_config,
             )
-           # Extract the text and parsed data from the response.
+            # Extract the text and parsed data from the response.
             parsed_data = getattr(response, 'parsed', None)  # Check if the response has parsed data, defaults to None
             return GeminiLLMResponse(content=response.text, parsed=parsed_data)
+        except ResourceExhausted as e:
+            # Re-raise the specific exception to be caught by tenacity for retry
+            raise e
         except Exception as e:
-            # If any exception occurs, wrap it in LLMGenerationError as expected by the interface.
+            # If any other exception occurs, wrap it in LLMGenerationError as expected by the interface.
             raise LLMGenerationError(f"Error invoking Gemini model: {e}") from e
 
+    # Retry "Randomly wait up to 2^x * 1 seconds between each retry until the
+    # range reaches 60 seconds, then randomly up to 60 seconds afterwards"
+    # We will retry up to 5 times on ResourceExhausted errors.
+    @retry(
+        wait=wait_random_exponential(multiplier=1, max=60),
+        stop=stop_after_attempt(5),
+        retry_error_callback=lambda retry_state: retry_state.outcome.result()
+    )
     async def ainvoke(
         self,
         input: str,
@@ -194,6 +218,7 @@ class GeminiLLM(LLMInterface):
     ) -> LLMResponse:
         """
         Invokes the Gemini model asynchronously with a given prompt and conversation history.
+        Includes a retry mechanism for handling resource exhaustion errors.
 
         This method uses the native async client for efficient, non-blocking API calls.
 
@@ -230,8 +255,9 @@ class GeminiLLM(LLMInterface):
             # Extract the text and parsed data from the response.
             parsed_data = getattr(response, 'parsed', None)
             return GeminiLLMResponse(content=response.text, parsed=parsed_data)
+        except ResourceExhausted as e:
+            # Re-raise the specific exception to be caught by tenacity for retry
+            raise e
         except Exception as e:
             # If any exception occurs, wrap it in LLMGenerationError.
-            raise LLMGenerationError(
-                f"Error invoking Gemini model asynchronously: {e}"
-            ) from e
+            raise LLMGenerationError(f"Error invoking Gemini model asynchronously: {e}") from e
