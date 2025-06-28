@@ -34,15 +34,6 @@ class Questions(BaseModel):
         """
         c_and_a_list: list[QuestionsBase]
 
-# class Questions(BaseModel):
-#     """
-#     Represents a dictionary of claims (keys) and questions (values).
-#     The root of the model is a dictionary where each key is a claim and the value is a list of questions related to that claim.
-#     """
-#     questions: Dict[str, List[str]] = Field(
-#         description="A dictionary where each key is a verifiable claim and the value is a list of questions related to that claim."
-#     )
-
 class EvaluationConclusions(enum.Enum):
     """Enumeration for evaluation conclusions."""
     TRUE = "true"

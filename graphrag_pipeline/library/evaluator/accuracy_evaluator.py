@@ -116,111 +116,59 @@ class AccuracyEvaluator:
         questions_dict = self._generate_questions_one_section(llm_questions, claims_list, structured_output)
 
         return questions_dict
-    
-    def evaluate_claims(self, llm_evaluator: LLMInterface, sections_data: list, base_eval_prompt: str, structured_output: bool = False) -> Dict:
+
+    def evaluate_one_claim(self, llm_evaluator: LLMInterface, claim_text: str, questions_and_answers: dict, base_eval_prompt: str, structured_output: bool = False) -> Dict:
         """
-        Evaluates each claim in the sections data using an LLM.
+        Evaluates a single claim using an LLM.
 
         Args:
             llm_evaluator: The language model to use for evaluation.
-            sections_data: A list of section dictionaries, each containing claims and questions.
-                The structure is expected to be:
-                [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': 'answer_1', ...}}, ...]}, ...]
+            claim_text: The text of the claim to evaluate.
+            questions_and_answers: A dictionary of questions and answers related to the claim.
             base_eval_prompt: The prompt template for evaluating a claim.
+            structured_output: Flag to determine if the LLM should return structured output.
 
         Returns:
-            The sections_data list, with each claim dictionary augmented with evaluation 'conclusion' and 'justification'.
+            A dictionary containing the evaluation 'conclusion' and 'justification'.
         """
-        # Iterate through each section and its claims
-        for section in sections_data:
+        # Format the Q&A for the prompt
+        q_and_a_str = json.dumps(questions_and_answers, indent=2)
 
-            # Iterate through each claim in the section
-            for claim_data in section.get("claims", []):
+        # Create the prompt and format it by inserting the claim text and Q&A
+        prompt = base_eval_prompt.format(
+            claim_text=claim_text,
+            questions_and_answers_json=q_and_a_str
+        )
 
-                claim_text = claim_data.get("claim")
-                if not claim_text:
-                    continue  # Skip if claim text is missing
-                questions_and_answers = claim_data.get("questions", {})  # Get the questions and answers for the claim
+        try:
+            response = llm_evaluator.invoke(prompt)  # Get the response content from the LLM
+            eval_result = {}
 
-                # Format the Q&A for the prompt
-                q_and_a_str = json.dumps(questions_and_answers, indent=2)
+            if structured_output:
+                if hasattr(response, 'parsed') and response.parsed:
+                    # The 'parsed' attribute is an EvaluationResults object.
+                    # We access its attributes to build the dictionary.
+                    # We use .value to get the string from the Enum.
+                    eval_result = {
+                        "conclusion": response.parsed.conclusion.value,
+                        "justification": response.parsed.justification,
+                    }
+                else:
+                    raise ValueError("The LLM response does not contain structured output. Please check the LLM configuration. This documentation explains how to configure the LLM for structured output: https://ai.google.dev/gemini-api/docs/structured-output")
+            else:
+                # Fallback to parsing the raw JSON string from the content.
+                # This logic is for when structured output is disabled.
+                clean_response = response.content.strip().lstrip("```json").rstrip("```")
+                eval_result = json.loads(clean_response)
 
-                # Create the prompt and format it by inserting the claim text and Q&A
-                prompt = base_eval_prompt.format(
-                    claim_text=claim_text,
-                    questions_and_answers_json=q_and_a_str
-                )
+            return eval_result
 
-                try:
-
-                    response = llm_evaluator.invoke(prompt)  # Get the response content from the LLM
-                    eval_result = {}
-
-                    if structured_output == True:
-
-                        if hasattr(response, 'parsed') and response.parsed:
-                            # The 'parsed' attribute is an EvaluationResults object.
-                            # We access its attributes to build the dictionary.
-                            # We use .value to get the string from the Enum.
-                            eval_result = {
-                                "conclusion": response.parsed.conclusion.value,
-                                "justification": response.parsed.justification,
-                            }
-                        
-                        else:
-                            raise ValueError("The LLM response does not contain structured output. Please check the LLM configuration. This documentation explains how to configure the LLM for structured output: https://ai.google.dev/gemini-api/docs/structured-output")
-                    
-                    else:
-                        # Fallback to parsing the raw JSON string from the content.
-                        # This logic is for when structured output is disabled.
-                        clean_response = response.content.strip().lstrip("```json").rstrip("```")
-                        eval_result = json.loads(clean_response)
-
-                    # Append the evaluation to the claim data
-                    claim_data.update(eval_result)
-
-                except Exception as e:
-                    print(f"Failed to evaluate claim: {claim_text}. Error: {e}")
-                    claim_data["conclusion"] = "error"
-                    claim_data["justification"] = f"Failed to parse LLM response: {str(e)}"
-        
-        return sections_data  # Return the updated sections data with evaluations
-    
-        # # Iterate through each section and its claims
-        # for section in sections_data:
-
-        #     # Iterate through each claim in the section
-        #     for claim_data in section.get("claims", []):
-
-        #         claim_text = claim_data.get("claim")
-        #         if not claim_text:
-        #             continue  # Skip if claim text is missing
-        #         questions_and_answers = claim_data.get("questions", {})  # Get the questions and answers for the claim
-
-        #         # Format the Q&A for the prompt
-        #         q_and_a_str = json.dumps(questions_and_answers, indent=2)
-
-        #         # Create the prompt and format it by inserting the claim text and Q&A
-        #         prompt = base_eval_prompt.format(
-        #             claim_text=claim_text,
-        #             questions_and_answers_json=q_and_a_str
-        #         )
-
-        #         try:
-        #             response_content = llm_evaluator.invoke(prompt).content  # Get the response content from the LLM
-        #             # Clean up the response to ensure it's valid JSON
-        #             clean_response = response_content.strip().lstrip("```json").rstrip("```")
-        #             eval_result = json.loads(clean_response)
-                    
-        #             # Append the evaluation to the claim data
-        #             claim_data.update(eval_result)
-
-        #         except Exception as e:
-        #             print(f"Failed to evaluate claim: {claim_text}. Error: {e}")
-        #             claim_data["conclusion"] = "error"
-        #             claim_data["justification"] = f"Failed to parse LLM response: {str(e)}"
-        
-        # return sections_data  # Return the updated sections data with evaluations
+        except Exception as e:
+            print(f"Failed to evaluate claim: {claim_text}. Error: {e}")
+            return {
+                "conclusion": "error",
+                "justification": f"Failed to parse LLM response: {str(e)}"
+            }
 
     def format_accuracy_report(self, evaluated_data: list, country: str, retriever_type: str) -> str:
         

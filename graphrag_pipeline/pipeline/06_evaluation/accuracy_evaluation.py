@@ -21,8 +21,9 @@ from dotenv import load_dotenv
 import os
 import json
 import re
+import time
 from neo4j_graphrag.embeddings import SentenceTransformerEmbeddings
-from library.kg_builder.utilities import GeminiLLM
+from library.kg_builder.utilities import GeminiLLM, get_rate_limit_checker
 from neo4j_graphrag.generation import RagTemplate
 from neo4j_graphrag.generation.graphrag import GraphRAG
 from library.evaluator import ReportProcessor, AccuracyEvaluator
@@ -170,13 +171,18 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
     # ========== 3. Class initialization for report assessment ==========
 
+    # ----- 3.1. Load evaluation configuration -----
+
     # Initialize the report processor and accuracy evaluator with the configuration
     report_processor = ReportProcessor(pattern=evaluation_config['section_split']['split_pattern'])
     
+    # Initialize the accuracy evaluator with the base prompts from the configuration
     acc_evaluator = AccuracyEvaluator(
         base_claims_prompt=evaluation_config['accuracy_evaluation']['base_claims_prompt'],
         base_questions_prompt=evaluation_config['accuracy_evaluation']['base_questions_prompt']
     )
+
+    # ----- 3.2. LLM configuration -----
 
     # Initialize LLM for claims
     llm_claims_config = evaluation_config['accuracy_evaluation']['llm_claims_config']
@@ -215,6 +221,26 @@ async def main(country: str = None, reports_output_directory: str = None, accura
         model_params=evaluation_config['graphrag']['llm_config']['model_params']
     )
     
+    # ----- 3.3. Set LLM requests per minute limit -----
+
+    # Get rate limits for all LLM usages
+    claims_rpm = evaluation_config['accuracy_evaluation']['llm_claims_config'].get('max_requests_per_minute', 20)
+    questions_rpm = evaluation_config['accuracy_evaluation']['llm_questions_config'].get('max_requests_per_minute', 20)
+    graphrag_rpm = evaluation_config['graphrag']['llm_config'].get('max_requests_per_minute', 20)
+    evaluator_rpm = evaluation_config['accuracy_evaluation']['llm_evaluator_config'].get('max_requests_per_minute', 20)
+
+    # Use the lowest rate limit for all calls to be safe
+    min_rpm = min(claims_rpm, questions_rpm, graphrag_rpm, evaluator_rpm)
+    
+    # Subtract 20% for safety, as Google does not guarantee exact rate limits
+    safe_rpm = round(min_rpm - min_rpm * 0.2)
+    print(f"Applying a global rate limit of LLM requests of {safe_rpm} requests per minute.")
+    
+    # Get the rate limit checker function
+    check_rate_limit = get_rate_limit_checker(safe_rpm)
+
+    # ----- 3.4. Retrieval and GraphRAG configuration -----
+
     # Create RAGTemplate using configuration files
     rag_template = RagTemplate(
         template=evaluation_config['graphrag']['rag_template_config'].get('template', None),  # Use custom template if specified, otherwise use default
@@ -300,9 +326,6 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         
             # Extract each section as different dictionary entries
             sections = report_processor.get_sections(file_path=report_path)  # sections: Dict[str, str] (key is section title, value is section content)
-            
-            # Get the number of extracted sections
-            num_sections = len(sections)
 
             # Iterate over each retriever class and initialize it
             for retriever_name, retriever_instance in retriever_classes.items():
@@ -323,10 +346,9 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         try:
                             # From each section, extract claims and questions using the LLMs
                             # Result will be a dictionary with claims (keys) and questions (values).
-                            # We will call the LLM by as many times as there are sections in the report
-                            # times 2 (one for claims and one for questions). Therefore, if there
-                            # are, say, 5 sections in the report, we will call the LLM 10 times (
-                            # 5 times for claims and 5 times for questions).
+                             # We will call the LLM twice here (one for claims, one for questions).
+                            check_rate_limit() # Check for claims extraction
+                            check_rate_limit() # Check for questions extraction
                             claims_and_questions = acc_evaluator.get_claims_and_questions_one_section(
                                 section_text=section_content,
                                 llm_claims=llm_claims,
@@ -344,7 +366,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         print(f"First claim: {list(claims_and_questions.keys())[0] if claims_and_questions else 'No claims found'}")
                         print(f"First question for first claim: {claims_and_questions[list(claims_and_questions.keys())[0]][0] if claims_and_questions and list(claims_and_questions.keys()) else 'No questions found'}")
 
-                        llm_usage += 2  # Increment LLM usage for claims and questions extraction
+                        llm_usage += 2  # Increment LLM usage for claims and questions extraction for each section (2 calls: one for claims and one for questions)
                         
                         section_claims_list = []  # List to store claims for the current section
                         
@@ -362,6 +384,9 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             # This will run the LLM for as many times as claims in the report
                             # (e.g., 40 times if there are 40 claims in the report)
                             for claim, questions in claims_and_questions.items():
+                                
+                                # Check and enforce rate limit before the GraphRAG call
+                                check_rate_limit()
 
                                 formatted_query_text = evaluation_config['graphrag']['query_text'].format(
                                     claim=claim,
@@ -416,14 +441,26 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                     # Evaluation is done individually for each of the sections in the report
                     if all_sections_results:
                         print(f"Evaluating claims for report: {Path(report_path).name}")
-                        evaluated_data = acc_evaluator.evaluate_claims(
-                            llm_evaluator=llm_evaluator,
-                            sections_data=all_sections_results,
-                            base_eval_prompt=evaluation_config['accuracy_evaluation']['base_eval_prompt'],
-                            structured_output=True  # Use structured output for the evaluation results for better consistency
-                        )
 
-                        llm_usage += 1 * num_sections  # Increment LLM usage by number of sections evaluated
+                        # Iterate through sections and claims to evaluate each one
+                        for section_data in all_sections_results:
+
+                            for claim_data in section_data.get("claims", []):
+                                
+                                # Check and enforce rate limit before the evaluation call
+                                check_rate_limit()
+
+                                eval_result = acc_evaluator.evaluate_one_claim(
+                                    llm_evaluator=llm_evaluator,
+                                    claim_text=claim_data.get("claim"),
+                                    questions_and_answers=claim_data.get("questions", {}),
+                                    base_eval_prompt=evaluation_config['accuracy_evaluation']['base_eval_prompt'],
+                                    structured_output=True
+                                )
+                                claim_data.update(eval_result)  # Update the claim_data with the "justification" and "conclusion" fields
+                                llm_usage += 1 # Increment LLM usage for each claim evaluation
+
+                        evaluated_data = all_sections_results
 
                         print("Formatting accuracy report...")
                         report_content = acc_evaluator.format_accuracy_report(
@@ -444,7 +481,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 else:  
                     pass  
         
-        print(f"\n=== Rough estimate of the number of LLM requests (potential overestimation): {llm_usage} ===\n")
+        print(f"\n=== Estimate of the number of LLM requests (potential overestimation): {llm_usage} ===\n")
 
         driver.close()
 
