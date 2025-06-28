@@ -486,12 +486,144 @@ def create_visualization(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
     return fig
 
 
-def save_visualizations(fig: go.Figure, country: str, final_merged_df: gpd.GeoDataFrame):
+def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.Figure:
     """
-    Save the interactive plot in multiple formats.
+    Create a horizontal bar chart showing forecasted events data with percent_increase1, avg1, and total_forecast values.
     
     Args:
-        fig: Plotly figure to save
+        final_merged_df: Merged GeoDataFrame with all data
+        country: Country name
+    
+    Returns:
+        Plotly Figure object with horizontal bar chart
+    """
+    # Filter only regions with data and sort by percent_increase1 descending
+    df_filtered = final_merged_df[
+        (final_merged_df['admin1'].notna()) & 
+        (final_merged_df['percent_increase1'] != 0)
+    ].copy()
+    
+    if len(df_filtered) == 0:
+        print("No data available for tabular chart")
+        return go.Figure()
+    
+    # Sort by percent_increase1 in descending order (for y-axis positioning)
+    df_sorted = df_filtered.sort_values('percent_increase1', ascending=True)  # ascending for proper horizontal order
+    
+    # Prepare data for the bar chart
+    admin_names = df_sorted['admin1'].tolist()
+    forecast_values = df_sorted['total_forecast'].round(0).astype(int).tolist()
+    average_values = df_sorted['avg1'].round(0).astype(int).tolist()
+    percent_changes = df_sorted['percent_increase1'].round(1).tolist()
+    
+    # Create color mapping for bars (similar to the original table styling)
+    colors = []
+    for pct in percent_changes:
+        if pct >= 50:
+            colors.append('#d73600')  # Dark red for high increases
+        elif pct >= 25:
+            colors.append('#ff6b35')  # Orange-red for moderate increases
+        elif pct >= 0:
+            colors.append('#ffd700')  # Yellow for small increases
+        else:
+            colors.append('#5b9bd5')  # Blue for decreases
+    
+    # Create the horizontal bar chart
+    fig = go.Figure()
+    
+    # Find the minimum value to position annotations properly
+    min_x = min(percent_changes) if percent_changes else 0
+    annotation_x = min_x - abs(min_x) * 5  # Position annotations further left
+    
+    fig.add_trace(go.Bar(
+        y=admin_names,
+        x=percent_changes,
+        orientation='h',
+        marker=dict(
+            color=colors,
+            line=dict(color='black', width=0.5)
+        ),
+        text=[f"{pct}%" for pct in percent_changes],
+        textposition='outside',
+        textfont=dict(size=10, color='black'),
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Percent Change: %{x:.1f}%<br>"
+            "Average Events: %{customdata[0]}<br>"
+            "Forecasted Events: %{customdata[1]}"
+            "<extra></extra>"
+        ),
+        customdata=list(zip(average_values, forecast_values)),
+        name="Percent Change"
+    ))
+    
+    # Add text annotations for avg1 and total_forecast values
+    for i, admin in enumerate(admin_names):
+        fig.add_annotation(
+            y=admin,
+            x=annotation_x,  # Dynamic positioning based on data range
+            text=f"Avg: {average_values[i]} | Forecast: {forecast_values[i]}",
+            showarrow=False,
+            font=dict(size=9, color='black'),
+            xanchor='left',  # Changed to left anchor
+            yanchor='middle'
+        )
+    
+    # Calculate chart dimensions based on data
+    max_x = max(percent_changes) if percent_changes else 100
+    
+    # Update layout with better spacing
+    fig.update_layout(
+        title=f"Forecasted Events (All Event Types) for {country}<br>"
+              f"<sub>Relative to 1-Month Average - Sorted by Risk Level</sub>",
+        xaxis_title="Percent Change (%)",
+        yaxis_title="Admin1 Regions",
+        font=dict(size=12),
+        margin=dict(l=100, r=100, t=100, b=80),  # Increased margins for better spacing
+        height=max(600, len(df_sorted) * 45 + 200),  # More space per bar
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        showlegend=False
+    )
+    
+    # Set x-axis range to accommodate annotations
+    fig.update_xaxes(
+        range=[annotation_x - 20, max_x + abs(max_x) * 0.1 + 10],
+        tickfont=dict(size=10)
+    )
+    
+    # Update y-axis for better readability
+    fig.update_yaxes(
+        tickfont=dict(size=10)
+    )
+    
+    # # Add vertical line at 25% (hotspot threshold)
+    # fig.add_vline(
+    #     x=25, 
+    #     line_dash="dash", 
+    #     line_color="red", 
+    #     annotation_text="Hotspot Threshold (25%)",
+    #     annotation_position="top right"
+    # )
+    
+    # Add vertical line at 0% (neutral line)
+    fig.add_vline(
+        x=0, 
+        line_dash="solid", 
+        line_color="gray", 
+        line_width=1
+    )
+    
+    return fig
+
+
+def save_visualizations(fig: go.Figure, bar_chart_fig: go.Figure, country: str, final_merged_df: gpd.GeoDataFrame):
+    """
+    Save the interactive plots in multiple formats.
+    
+    Args:
+        fig: Plotly choropleth map figure to save
+        bar_chart_fig: Plotly bar chart figure to save
         country: Country name
         final_merged_df: Merged data for statistics
     """
@@ -501,19 +633,37 @@ def save_visualizations(fig: go.Figure, country: str, final_merged_df: gpd.GeoDa
 
     # Generate timestamp for unique filenames
     timestamp = datetime.now().strftime("%Y-%m-%d")
-    base_filename = f"Map_{country.replace(' ', '_')}_{timestamp}"
-
+    
+    # Save choropleth map
+    map_base_filename = f"Map_{country.replace(' ', '_')}_{timestamp}"
+    
     # Save as HTML (interactive)
-    html_file = output_dir / f"{base_filename}.html"
+    html_file = output_dir / f"{map_base_filename}.html"
     fig.write_html(html_file)
 
     # Save as PDF (static, high quality)
-    pdf_file = output_dir / f"{base_filename}.pdf"
+    pdf_file = output_dir / f"{map_base_filename}.pdf"
     fig.write_image(pdf_file, width=1200, height=800)
 
     # Save as SVG (vector format)
-    svg_file = output_dir / f"{base_filename}.svg"
+    svg_file = output_dir / f"{map_base_filename}.svg"
     fig.write_image(svg_file, width=1200, height=800)
+    
+    # Save tabular chart
+    table_base_filename = f"BarChart_{country.replace(' ', '_')}_{timestamp}"
+    
+    # Save as HTML (interactive)
+    table_html_file = output_dir / f"{table_base_filename}.html"
+    bar_chart_fig.write_html(table_html_file)
+
+    # Save as PDF (static, high quality)
+    table_pdf_file = output_dir / f"{table_base_filename}.pdf"
+    bar_chart_fig.write_image(table_pdf_file, width=800, height=max(400, len(final_merged_df) * 30 + 150))
+
+    # Save as SVG (vector format)
+    table_svg_file = output_dir / f"{table_base_filename}.svg"
+    bar_chart_fig.write_image(table_svg_file, width=800, height=max(400, len(final_merged_df) * 30 + 150))
+    
 
 
 def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regions: pl.DataFrame):
@@ -621,11 +771,12 @@ def main():
         # Step 5: Merge all data
         final_merged_df = create_merged_mapping(coords, adm1_shapes, all_regions)
         
-        # Step 6: Create visualization
+        # Step 6: Create visualizations
         fig = create_visualization(final_merged_df, country)
+        bar_chart_fig = create_tabular_chart(final_merged_df, country)
         
         # Step 7: Save outputs
-        save_visualizations(fig, country, final_merged_df)
+        save_visualizations(fig, bar_chart_fig, country, final_merged_df)
         save_data(final_merged_df, country)
         save_hotspots_list(hotspots_list, country, horizon, all_regions)
         
