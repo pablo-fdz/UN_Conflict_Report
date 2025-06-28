@@ -3,9 +3,49 @@
 ## Pipeline Steps
 
 ### 1. Data Ingestion
-- **Sources**: GDELT, ACLED, Google News, Factal
+- **Sources**: GDELT, ACLED, Factal, Google News
+- **ACLED CAST Analysis**: Conflict forecasting and risk mapping
 - **Output**: Standardized data files in `data/` folder
 - **Configuration**: `config_files/data_sources_config.json`
+
+#### ACLED CAST Analysis (`acled_cast_analysis.py`)
+
+The ACLED CAST (Conflict Alert and Surveillance Tool) analysis script provides comprehensive conflict risk assessment and visualization capabilities:
+
+**Features:**
+- Retrieves ACLED CAST forecast data via API
+- Calculates rolling averages for 1, 3, 6, and 12 months
+- Computes percent increase in conflict risk compared to historical averages
+- Identifies hotspots and regions with significant changes (>25% increase)
+- Downloads admin1 boundary shapefiles automatically
+- Creates interactive choropleth maps with Plotly
+- Saves results in multiple formats (HTML, PDF, SVG, Parquet)
+
+**Configuration:**
+Add an `acled_cast` section to `config_files/data_ingestion_config.json`:
+```json
+"acled_cast": {
+  "country": "Afghanistan",
+  "window": 1,
+  "horizon": 2,
+  "forecast_horizon": 2,
+  "window_size": 1
+}
+```
+
+**Usage:**
+```bash
+cd pipeline/01_data_ingestion
+python acled_cast_analysis.py
+```
+
+**Outputs:**
+- Interactive maps: `data/images/cast_conflict_map_[country]_[timestamp].[html|pdf|svg]`
+- Processed data: `data/acled_cast/cast_analysis_[country]_[timestamp].parquet`
+
+**Requirements:**
+- ACLED API credentials in environment variables: `ACLED_EMAIL`, `ACLED_API_KEY`
+- Additional packages: `geopandas`, `plotly`, `pycountry`, `shapely`, `kaleido`
 
 ### 2. Knowledge Graph Building
 - **Input**: Processed data files
