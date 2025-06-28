@@ -1,9 +1,10 @@
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 import polars as pl
 import random
 import time
 import httpx
 import trafilatura
+import base64
 
 from pygooglenews import GoogleNews
 import pprint
@@ -23,13 +24,16 @@ class GoogleNewsIngestor:
     Other class attributes:
         df (pl.DataFrame): dataframe that will hold the news texts and their metadata. Refer to https://docs.google.com/document/d/1zmnxfAxCnyALWReEeEodhm7Hg3VgAsKUsmKBiZdcZxc/edit?tab=t.0 to see the columns it should have.
     """
-    def __init__(self, region: str, date_interval: Tuple[str, str], language: str = 'en'):
+    def __init__(self, country:str, start_date: str, end_date: str, region: Optional[str] = "", 
+                 query_language: str = 'en', query_country: str = 'US'):
 
-        self.gn = GoogleNews(lang = language, country = region)
-        self.region = region    # aka the SEARCH TERM
-        self.date_interval = date_interval
+        self.country = country  
+        self.region = region
+        self.search_term = f"{country} {region}" if region != "" else country
+        self.gn = GoogleNews(lang = query_language, country = query_country)
 
-        self.start_date, self.end_date = date_interval
+
+        self.start_date, self.end_date = start_date, end_date
 
         self.USER_AGENTS = [
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/113.0.0.0 Safari/537.36",
@@ -73,7 +77,7 @@ class GoogleNewsIngestor:
 
     def _get_articles(self, start_date, end_date):
         try:
-            query = self.gn.search(query=self.region, from_=start_date, to_=end_date)
+            query = self.gn.search(query=self.search_term, from_=start_date, to_=end_date)
             return query["entries"]
         except Exception as e:
             self.error_batches.append((start_date, end_date))
@@ -90,6 +94,9 @@ class GoogleNewsIngestor:
         return articles
 
     def _build_dataframes(self, articles):
+        if not articles:
+            print("No articles found for the given query.")
+            return
         rows = [{
                     "title": article.get("title"),
                     "google_link": article.get("link", None),
@@ -98,9 +105,25 @@ class GoogleNewsIngestor:
                 }
                 for article in articles
             ]
+        
+        prefix = self.country.replace(" ", "")[:3].upper()  # e.g., "SUD"
+        
+        self.n_articles = df.height
+        random.seed(42)
+        unique_digits = random.sample(range(10000, 99999), self.n_articles)
 
         df = pl.DataFrame(rows).unique(subset=["google_link"])
-        self.n_articles = df.height
+        df = df.with_columns(
+                [
+                    pl.Series(
+                        name="id",
+                        values=[f"GN_{prefix}{num}" for num in unique_digits]
+                    ),
+                    pl.col("published").str.strptime(pl.Date, "%a, %d %b %Y %H:%M:%S %Z", strict=False).alias("date")
+                ]
+            ).drop("published")
+
+
         self._split_and_store_dfs(df)
     
     def _split_and_store_dfs(self, df, chunk_size=500):
@@ -166,9 +189,9 @@ class GoogleNewsIngestor:
         idx, url = idx_url_tuple
         interval_time = 1  # interval is optional, default is None
         #proxy = "http://user:pass@localhost:8080" # proxy is optional, default is None
-        proxy = "http://user:pass@proxyhost:port"
+        # proxy = "http://user:pass@proxyhost:port"
         try:
-            decoded_url = gnewsdecoder(url, interval=interval_time, proxy=proxy)
+            decoded_url = gnewsdecoder(url, interval=interval_time)
             time.sleep(1.5)
             if decoded_url.get("status"):
                 return (idx, decoded_url["decoded_url"])
@@ -194,7 +217,7 @@ class GoogleNewsIngestor:
         proxies = {"http://": "http://user:pass@proxyhost:port",
                    "https://": "http://user:pass@proxyhost:port"}
         try:
-            with httpx.Client(headers=headers, follow_redirects=True, timeout=timeout, proxies=proxies) as client:
+            with httpx.Client(headers=headers, follow_redirects=True, timeout=timeout) as client:
                 response = client.get(url)
                 if response.status_code == 200:
                     html = response.text
@@ -240,3 +263,13 @@ class GoogleNewsIngestor:
                     non_empty = (df["full_text"].is_not_null() & (df["full_text"].cast(str) != '')).sum()
                 print(f"Number of correctly fetched articles (non-null): {non_nulls} / {df.height}")
                 print(f"Number of non-empty articles: {non_empty} / {df.height}")
+
+    def export_to_parquets(self, output_dir: str):
+        """
+        Exports all DataFrames to Parquet files in the specified directory.
+        """
+        for key, df in self.__dict__.items():
+            if isinstance(df, pl.DataFrame):
+                file_path = f"{output_dir}/{key}.parquet"
+                df.write_parquet(file_path)
+                print(f"Exported {key} to {file_path}")
