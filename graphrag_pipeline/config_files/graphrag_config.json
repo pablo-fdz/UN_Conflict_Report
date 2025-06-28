@@ -10,6 +10,5 @@
         "system_instructions": "Answer the Question using the following Context. Only respond with information mentioned in the Context. Do not inject any speculative information not mentioned. If no examples are provided, omit the Examples section in your answer."
     },
     "query_text": "Generate a brief security report for {country} in the last year, with a forward-looking perspective on the future of the country. Structure the report so that events are at the center of it. Format the report as markdown text. Cite the sources of information used in the report.",
-    "examples": "",
-    "return_context": true
+    "examples": ""
 }

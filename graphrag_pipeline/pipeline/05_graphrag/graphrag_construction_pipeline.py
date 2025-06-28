@@ -148,19 +148,11 @@ class GraphRAGConstructionPipeline:
                 message_history=None,  # Optional message history for conversational context (omitted for now)
                 examples=self.graphrag_config.get('examples', ''),  # Optional examples to guide the LLM's response (defaults to empty string)
                 retriever_config=retriever_search_params,  # Configuration for the search parameters of the input retriever
-                return_context=self.graphrag_config.get('return_context', True),  # Whether to return the context used for generating the answer (defaults to True)
+                return_context=True,  # Whether to augment the prompt with the context retrieved by the retriever (should be set to True, which means the context is included in the prompt sent to the LLM)
             )
             
             # Get the generated answer from the GraphRAG results
             generated_answer = graphrag_results.answer
-
-            # If return context is True, the context used for generating the 
-            # answer is also returned (disabled for now, if enabled should 
-            # be uncommented and appended to the returned results)
-            # if self.graphrag_config.get('return_context', True):
-            #     context = graphrag_results.retriever_result
-            # else:
-            #     context = None
 
         except Exception as e:
             raise RuntimeError(f"Error during GraphRAG construction pipeline execution: {e}")
