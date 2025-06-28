@@ -1,14 +1,20 @@
 {
   "country": "Sudan",
   "forecast_horizon_months": 2,
-  "analysis_date": "2025-06-28 15:31:51",
+  "analysis_date": "2025-06-28 17:35:37",
   "total_hotspots": 9,
   "hotspot_regions": [
     {
-      "name": "River Nile",
+      "name": "Sennar",
       "avg1": 2.0,
-      "total_forecast": 6.0,
-      "percent_increase1": 200.0
+      "total_forecast": 4.0,
+      "percent_increase1": 100.0
+    },
+    {
+      "name": "Northern",
+      "avg1": 7.0,
+      "total_forecast": 10.0,
+      "percent_increase1": 42.857142857142854
     },
     {
       "name": "Aj Jazirah",
@@ -17,16 +23,16 @@
       "percent_increase1": 71.42857142857143
     },
     {
-      "name": "Khartoum",
-      "avg1": 33.0,
-      "total_forecast": 49.0,
-      "percent_increase1": 48.484848484848484
-    },
-    {
       "name": "Gedaref",
       "avg1": 0.0,
       "total_forecast": 3.0,
       "percent_increase1": 30.0
+    },
+    {
+      "name": "Khartoum",
+      "avg1": 33.0,
+      "total_forecast": 49.0,
+      "percent_increase1": 48.484848484848484
     },
     {
       "name": "West Darfur",
@@ -41,22 +47,16 @@
       "percent_increase1": 400.0
     },
     {
+      "name": "River Nile",
+      "avg1": 2.0,
+      "total_forecast": 6.0,
+      "percent_increase1": 200.0
+    },
+    {
       "name": "Central Darfur",
       "avg1": 5.0,
       "total_forecast": 7.0,
       "percent_increase1": 40.0
-    },
-    {
-      "name": "Northern",
-      "avg1": 7.0,
-      "total_forecast": 10.0,
-      "percent_increase1": 42.857142857142854
-    },
-    {
-      "name": "Sennar",
-      "avg1": 2.0,
-      "total_forecast": 4.0,
-      "percent_increase1": 100.0
     }
   ]
 }

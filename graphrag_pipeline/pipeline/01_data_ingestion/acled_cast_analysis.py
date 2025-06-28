@@ -465,7 +465,7 @@ def create_visualization(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
             lat=centroids["lat"],
             text=centroids["label"],
             mode="text",
-            textfont=dict(size=8, color="black"),
+            textfont=dict(size=10, color="black"),
             hoverinfo="skip",
             showlegend=False,
         )
@@ -489,13 +489,6 @@ def create_visualization(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
 def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.Figure:
     """
     Create a horizontal bar chart showing forecasted events data with percent_increase1, avg1, and total_forecast values.
-    
-    Args:
-        final_merged_df: Merged GeoDataFrame with all data
-        country: Country name
-    
-    Returns:
-        Plotly Figure object with horizontal bar chart
     """
     # Filter only regions with data and sort by percent_increase1 descending
     df_filtered = final_merged_df[
@@ -507,8 +500,8 @@ def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
         print("No data available for tabular chart")
         return go.Figure()
     
-    # Sort by percent_increase1 in descending order (for y-axis positioning)
-    df_sorted = df_filtered.sort_values('percent_increase1', ascending=True)  # ascending for proper horizontal order
+    # Sort by percent_increase1 in ascending order (for proper horizontal order)
+    df_sorted = df_filtered.sort_values('percent_increase1', ascending=True)
     
     # Prepare data for the bar chart
     admin_names = df_sorted['admin1'].tolist()
@@ -516,24 +509,20 @@ def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
     average_values = df_sorted['avg1'].round(0).astype(int).tolist()
     percent_changes = df_sorted['percent_increase1'].round(1).tolist()
     
-    # Create color mapping for bars (similar to the original table styling)
+    # Create color mapping for bars
     colors = []
     for pct in percent_changes:
         if pct >= 50:
-            colors.append('#d73600')  # Dark red for high increases
+            colors.append('#d73600')
         elif pct >= 25:
-            colors.append('#ff6b35')  # Orange-red for moderate increases
+            colors.append('#ff6b35')
         elif pct >= 0:
-            colors.append('#ffd700')  # Yellow for small increases
+            colors.append('#ffd700')
         else:
-            colors.append('#5b9bd5')  # Blue for decreases
+            colors.append('#5b9bd5')
     
     # Create the horizontal bar chart
     fig = go.Figure()
-    
-    # Find the minimum value to position annotations properly
-    min_x = min(percent_changes) if percent_changes else 0
-    annotation_x = min_x - abs(min_x) * 5  # Position annotations further left
     
     fig.add_trace(go.Bar(
         y=admin_names,
@@ -545,7 +534,8 @@ def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
         ),
         text=[f"{pct}%" for pct in percent_changes],
         textposition='outside',
-        textfont=dict(size=10, color='black'),
+        textfont=dict(size=12, color='black'),
+        cliponaxis=False,  # Prevent cropping of labels
         hovertemplate=(
             "<b>%{y}</b><br>"
             "Percent Change: %{x:.1f}%<br>"
@@ -557,54 +547,31 @@ def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
         name="Percent Change"
     ))
     
-    # Add text annotations for avg1 and total_forecast values
-    for i, admin in enumerate(admin_names):
-        fig.add_annotation(
-            y=admin,
-            x=annotation_x,  # Dynamic positioning based on data range
-            text=f"Avg: {average_values[i]} | Forecast: {forecast_values[i]}",
-            showarrow=False,
-            font=dict(size=9, color='black'),
-            xanchor='left',  # Changed to left anchor
-            yanchor='middle'
-        )
-    
-    # Calculate chart dimensions based on data
-    max_x = max(percent_changes) if percent_changes else 100
-    
     # Update layout with better spacing
     fig.update_layout(
-        title=f"Forecasted Events (All Event Types) for {country}<br>"
-              f"<sub>Relative to 1-Month Average - Sorted by Risk Level</sub>",
+        title=f"Forecasted Events for {country}<br>"
+              f"<sub>Relative to 1-Month Average</sub>",
         xaxis_title="Percent Change (%)",
-        yaxis_title="Admin1 Regions",
-        font=dict(size=12),
-        margin=dict(l=100, r=100, t=100, b=80),  # Increased margins for better spacing
-        height=max(600, len(df_sorted) * 45 + 200),  # More space per bar
+        yaxis_title="Regions",
+        font=dict(size=10),
+        margin=dict(l=250, r=20, t=100, b=80),  # More left, less right margin
+        height=len(df_sorted) * 30,
         paper_bgcolor='white',
         plot_bgcolor='white',
         showlegend=False
     )
     
-    # Set x-axis range to accommodate annotations
+    # Remove x-axis ticks and add space between y-labels and bars
     fig.update_xaxes(
-        range=[annotation_x - 20, max_x + abs(max_x) * 0.1 + 10],
+        showticklabels=False,
+        ticks="",
         tickfont=dict(size=10)
     )
     
-    # Update y-axis for better readability
     fig.update_yaxes(
-        tickfont=dict(size=10)
+        tickfont=dict(size=12),
+        ticksuffix="    "
     )
-    
-    # # Add vertical line at 25% (hotspot threshold)
-    # fig.add_vline(
-    #     x=25, 
-    #     line_dash="dash", 
-    #     line_color="red", 
-    #     annotation_text="Hotspot Threshold (25%)",
-    #     annotation_position="top right"
-    # )
     
     # Add vertical line at 0% (neutral line)
     fig.add_vline(
