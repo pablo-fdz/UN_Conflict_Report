@@ -33,7 +33,8 @@ class CustomGraphRAG:
     neo4j_graphrag.generation, by separating the search query used for the retriever (i.e., 
     the query that will be embedded and/or based on which a full text search will be done) 
     from the user query (i.e., the question asked by the user and that will be used
-    to generate the final result).
+    to generate the final result). It also enables the possibility to generate structured outputs
+    (i.e., outputs that can be parsed into a structured format, such as JSON).
     
     Performs a GraphRAG search using a specific retriever and LLM.
 
