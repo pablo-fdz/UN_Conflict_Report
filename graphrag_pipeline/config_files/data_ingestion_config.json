@@ -7,16 +7,16 @@
     "country": "Sudan"
   },
   "acled_cast": {
-    "country": "Sudan",
+    "country": "Philippines",
     "window": 1,
     "horizon": 2
   },
   "factal": {
     "ingestion": true,
     "include_in_kg": true,
-    "start_date": "2025-05-01",
-    "end_date": "2025-05-31",
-    "country": "Iran"
+    "start_date": "2025-06-01",
+    "end_date": "2025-06-28",
+    "country": "Sudan"
   },
   "google_news": {
     "ingestion": false,
