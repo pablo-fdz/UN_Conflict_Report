@@ -287,14 +287,19 @@ class GoogleNewsIngestor:
         full_df = full_df.sort("date")
 
         self._split_and_store_dfs(full_df)
-        dates_combinations = []
+
+        date_tuple_counts = {}
 
         for i in range(1, self.n_dfs + 1):
             df = getattr(self, f"df_{i}")
+
             first_date = str(df["date"].min())
             last_date = str(df["date"].max())
-            file_path = output_dir / f"google_news_{self.search_term}_{first_date}_{last_date}_chunk{i}.parquet"
-            df.write_parquet(file_path)
+            
             date_tuple = (first_date, last_date)
-    
-            dates_combinations.append()
+            suffix = date_tuple_counts.get(date_tuple, 0)
+
+            file_path = output_dir / f"google_news_{self.search_term}_{first_date}_{last_date}_{suffix}.parquet"
+            df.write_parquet(file_path)
+
+            date_tuple_counts[date_tuple] = suffix + 1
