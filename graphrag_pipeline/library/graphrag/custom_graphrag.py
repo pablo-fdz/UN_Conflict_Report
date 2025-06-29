@@ -38,22 +38,6 @@ class CustomGraphRAG:
     
     Performs a GraphRAG search using a specific retriever and LLM.
 
-    Example:
-
-    .. code-block:: python
-
-      import neo4j
-      from neo4j_graphrag.retrievers import VectorRetriever
-      from neo4j_graphrag.llm.openai_llm import OpenAILLM
-      from neo4j_graphrag.generation import GraphRAG
-
-      driver = neo4j.GraphDatabase.driver(URI, auth=AUTH)
-
-      retriever = VectorRetriever(driver, "vector-index-name", custom_embedder)
-      llm = OpenAILLM()
-      graph_rag = GraphRAG(retriever, llm)
-      graph_rag.search(query_text="Find me a book about Fremen")
-
     Args:
         retriever (Retriever): The retriever used to find relevant context to pass to the LLM.
         llm (LLMInterface): The LLM used to generate the answer.
@@ -61,6 +45,48 @@ class CustomGraphRAG:
 
     Raises:
         RagInitializationError: If validation of the input arguments fail.
+
+    Example:
+
+    .. code-block:: python
+
+        import neo4j
+        from neo4j_graphrag.retrievers import VectorRetriever
+        from library.kg_builder.utilities.gemini_llm import GeminiLLM
+        from library.graphrag.custom_graphrag import CustomGraphRAG
+
+        # 1) connect to Neo4j
+        driver = neo4j.GraphDatabase.driver(URI, auth=AUTH)
+
+        # 2) build your Retriever
+        retriever = VectorRetriever(driver, "vector-index-name", custom_embedder)
+
+        # 3) init GeminiLLM
+        llm = GeminiLLM(
+            model_name="gemini-2.5-flash",
+            google_api_key="YOUR_GOOGLE_API_KEY",
+            model_params={
+                "temperature": 0.0,
+                "max_output_tokens": 1024,
+                "response_mime_type": "application/json",
+                "response_schema": YourPydanticModel,
+            },
+            default_system_instruction="You are a helpful assistant."
+        )
+
+        # 4) init your CustomGraphRAG
+        rag = CustomGraphRAG(retriever, llm)
+
+        # 5) perform RAG search, splitting out search vs. generation text
+        result = rag.search(
+            search_text="books about Fremen",
+            query_text="Find me a book about Fremen",
+            return_context=True,        # include retriever hits in the result
+            structured_output=True      # parse JSON into YourPydanticModel
+        )
+
+        print("Answer:", result.answer)
+        print("Hits:", [item.content for item in result.retriever_result.items])
     """
 
     def __init__(
