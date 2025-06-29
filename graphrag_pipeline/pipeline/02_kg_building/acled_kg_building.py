@@ -1,7 +1,7 @@
 """
 ACLED Knowledge Graph Builder with Built-in Entity Resolution
 
-This script builds knowledge graphs from ACLED conflict data for any country/region
+This script builds knowledge graphs from ACLED conflict data
 using the standard KGConstructionPipeline with built-in entity resolution.
 
 Features:
@@ -12,7 +12,7 @@ Features:
 
 Usage Examples:
     # Process all data from Sudan with sample for testing
-    python acled_kg_building.py --file-country "Sudan" --sample-size 100
+    python acled_kg_building.py --file-country "Sudan" --sample-size 10
 
     # List available data files
     python acled_kg_building.py --list-files
@@ -21,9 +21,7 @@ Usage Examples:
     python acled_kg_building.py
 
 RECENT CHANGES:
-- Fully reverted to standard KGConstructionPipeline with built-in entity resolution
-- Removed all custom resolver code and configuration
-- Simplified interface for better stability and compatibility
+- After trying a custom Entity Resolver, we fully reverted to standard KGConstructionPipeline with built-in entity resolution
 - Uses configuration files for entity resolution settings
 
 Author: Generated for UN Conflict Report project
@@ -60,18 +58,16 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     """
     Main function to build knowledge graph from ACLED conflict data.
     
-    This script demonstrates the complete pipeline for building and refining a knowledge graph:
-    1. Data Loading: Loads ACLED conflict data from any country/region
-    2. Knowledge Graph Construction: Creates entities, relationships, and document nodes with metadata
+    1. Data Loading: Loads ACLED conflict data
+    2. Knowledge Graph Construction: Creates entities, relationships, text chunks and document nodes with metadata
     3. Entity Resolution: Uses the built-in SpaCy semantic matching resolver
     
     The resulting knowledge graph contains entities with proper relationships, ready for 
     downstream analysis and querying.
     
     Args:
-        data_file_country (str, optional): Pattern to match ACLED data files. If None, uses first available file.
+        data_file_pattern (str, optional): Pattern to match ACLED data files. If None, uses first available file.
         sample_size (int, optional): Number of rows to process for testing. If None, processes all data.
-        region (str, optional): Region code (currently not used - for future compatibility).
     """
 
     # ==================== 1. Load data ====================
@@ -89,7 +85,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
         if not available_files:
             raise FileNotFoundError(f"No ACLED parquet files found in: {data_dir}")
         
-        # Select file based on pattern or use first available
+        # Select file based on pattern (name of a country) or use first available
         if data_file_pattern:
             matching_files = [f for f in available_files if data_file_pattern.lower() in f.lower()]
             if not matching_files:
@@ -108,7 +104,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
         # Apply sampling if specified
         if sample_size:
             original_size = len(df)
-            df = df.tail(sample_size)
+            df = df.head(sample_size)
             print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
         
         # Convert date column to string format for metadata
@@ -118,7 +114,6 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
             ])
         
         print(f"Loaded {len(df)} rows from ACLED data")
-        print("Sample data columns:", df.columns[:5])  # Show first 5 columns
     
     except Exception as e:
         print(f"Error loading ACLED data: {e}")
@@ -138,7 +133,6 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     }
 
     # Run the KG pipeline with the loaded data
-    print("Starting Knowledge Graph construction with built-in entity resolution...")
     
     results = await kg_pipeline.run_async(
         df=df,
@@ -149,7 +143,6 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     )
 
     print(f"Processed {len(results)} documents successfully.")
-    print("Knowledge graph construction completed with built-in entity resolution.")
     return results
 
 # Asyncio event loop to run the main function in a script
@@ -176,20 +169,8 @@ if __name__ == "__main__":
             print(f"Data directory not found: {data_dir}")
         sys.exit(0)
     
-    print("Starting ACLED Knowledge Graph Construction with Built-in Entity Resolution")
-    print("=" * 80)
-    
     # Run the main function with arguments
     results = asyncio.run(main(
         data_file_pattern=args.file_country,
-        sample_size=args.sample_size,
-        region=None  # No longer used
+        sample_size=args.sample_size
     ))
-    
-    print("=" * 80)
-    if results:
-        print(f"✅ SUCCESS: Processed {len(results)} documents.")
-        print("Knowledge graph created with built-in entity resolution.")
-    else:
-        print("❌ FAILED: No documents were processed.")
-    print("=" * 80)
