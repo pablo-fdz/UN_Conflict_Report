@@ -17,7 +17,11 @@ async def main():
     # ==================== 1. Load data ====================
 
     # TODO: Method to load Google News data here
+    # Also figure out google news parquet naming
+    google_news_data_dir = graphrag_pipeline_dir / 'data' / 'google_news'
     df = None  # Placeholder for actual DataFrame loading logic
+    if df['date'].dtype == pl.Date:
+        df = df.with_columns(pl.col('date').cast(pl.String))
 
     try:
         pass  # Placeholder for Google News data loading logic
@@ -33,14 +37,16 @@ async def main():
     # Define metadata mapping for sample data(document properties additional 
     # to base field to dataframe columns)
     metadata_mapping = {
-
+        'date': 'date',
+        'url': 'decoded_url',
+        'source': 'source'
     }
 
     # Run the KG pipeline with the loaded data
     results = await kg_pipeline.run_async(
         df=df,
         document_base_field='id',
-        text_column='text',
+        text_column='full_text',
         document_metadata_mapping=metadata_mapping,
         document_id_column=None  # Use default document ID generation
     )
