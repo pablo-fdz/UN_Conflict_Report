@@ -24,10 +24,10 @@ import re
 from neo4j_graphrag.embeddings import SentenceTransformerEmbeddings
 from library.kg_builder.utilities import GeminiLLM, get_rate_limit_checker
 from neo4j_graphrag.generation import RagTemplate
-from neo4j_graphrag.generation.graphrag import GraphRAG
 from library.evaluator import ReportProcessor, AccuracyEvaluator
 from library.evaluator.schemas import Claims, Questions, EvaluationResults, GraphRAGResults
 from library.graphrag import CustomGraphRAG
+from library.graphrag.utilities import escape_lucene_query
 from neo4j_graphrag.retrievers import (
     VectorRetriever,
     VectorCypherRetriever,
@@ -409,22 +409,21 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 # Check and enforce rate limit before the GraphRAG call
                                 check_rate_limit()
 
+                                # Sanitize the claim text for use in the query
+                                # (e.g., escape special characters for Lucene queries)
+                                safe_claim = escape_lucene_query(claim)
+
                                 formatted_query_text = evaluation_config['graphrag']['query_text'].format(
                                     claim=claim,
                                     questions=questions
                                 )
-
-                                # The concise query for the retriever is just the claim
-                                # This will be used to search the knowledge graph
-                                # and retrieve relevant context for the LLM to generate answers
-                                search_query = claim
 
                                 # As with neo4j's GraphRAG class, if return_context is
                                 # set to True, the `graphrag_results` will be a
                                 # dictionary with 2 keys: `answer` and `retriever_result`,
                                 # with the context extracted by the retriever
                                 graphrag_results = graphrag.search(
-                                    search_text=search_query,  # Search query for the retriever (i.e., the claim)
+                                    search_text=safe_claim,  # Search query for the retriever (i.e., the claim)
                                     query_text=formatted_query_text,  # User question that is used to search the knowledge graph (i.e., vector search and fulltext search is made based on this question); defaults to empty string if not provided
                                     message_history=None,  # Optional message history for conversational context (omitted for now)
                                     examples=evaluation_config['graphrag'].get('examples', ''),  # Optional examples to guide the LLM's response (defaults to empty string)
