@@ -12,7 +12,8 @@
         "model_name": "gemini-2.5-flash",
         "model_params": {
             "temperature": 0.0
-        }
+        },
+        "max_requests_per_minute": 10
     },
     "schema_config": {
         "create_schema": true,

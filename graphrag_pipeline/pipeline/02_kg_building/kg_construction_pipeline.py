@@ -13,10 +13,9 @@ if graphrag_pipeline_dir not in sys.path:
 from dotenv import load_dotenv
 import os
 import json
-from google import genai
 import polars as pl
 from library.kg_builder import CustomKGPipeline, build_kg_from_df
-from library.kg_builder.utilities import GeminiLLM, ensure_spacy_model
+from library.kg_builder.utilities import GeminiLLM, ensure_spacy_model, get_rate_limit_checker
 from neo4j_graphrag.experimental.components.resolver import (
     SpaCySemanticMatchResolver, FuzzyMatchResolver, SinglePropertyExactMatchResolver
 )
@@ -37,6 +36,8 @@ class KGConstructionPipeline:
         self.config_files_path = os.path.join(graphrag_pipeline_dir, 'config_files')  # Find path to config_files folder
         self._load_configs()
         self._setup_credentials()
+        self._set_llm_rate_limit()
+        self.llm_usage = 0  # Track LLM usage for rate limiting
         
     def _load_configs(self):
         """Load all configuration files."""
@@ -74,6 +75,15 @@ class KGConstructionPipeline:
         if not self.gemini_api_key:
             raise ValueError("Gemini API key is not set. Please provide a valid API key.")
     
+    def _set_llm_rate_limit(self):
+        
+        # Get rate limit from config, default to 20
+        rpm = self.build_config['llm_config'].get('max_requests_per_minute', 20)
+        # Subtract 20% for safety
+        safe_rpm = round(rpm - rpm * 0.2)
+        print(f"Applying a global rate limit of LLM requests of {safe_rpm} requests per minute.")
+        self.check_rate_limit = get_rate_limit_checker(safe_rpm)
+
     def _create_resolver(self, driver: neo4j.Driver):
         """Create entity resolver based on configuration."""
 
@@ -187,15 +197,20 @@ class KGConstructionPipeline:
                 kg_pipeline = self._create_kg_pipeline(driver)
                 
                 # Process the dataframe
-                results = await build_kg_from_df(
+                results, llm_calls = await build_kg_from_df(
                     kg_pipeline=kg_pipeline,
                     df=df,
                     document_base_field=document_base_field,
                     text_column=text_column,
                     document_metadata_mapping=document_metadata_mapping,
-                    document_id_column=document_id_column  # Use default document ID generation
+                    document_id_column=document_id_column,  # Use default document ID generation
+                    rate_limit_checker=self.check_rate_limit
                 )
+                self.llm_usage = llm_calls
+
         except Exception as e:
             raise RuntimeError(f"Error during KG construction pipeline execution: {e}")
         
+        print(f"\n=== Total LLM requests for KG building: {self.llm_usage} ===\n")
+
         return results

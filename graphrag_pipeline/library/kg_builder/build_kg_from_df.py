@@ -1,5 +1,5 @@
 # Utilities
-from typing import Dict, List, Tuple, Any, Optional, Union
+from typing import Dict, List, Tuple, Any, Optional, Union, Callable
 import time
 import polars as pl
 import uuid
@@ -15,7 +15,8 @@ async def build_kg_from_df(
     text_column: str = 'text',
     document_metadata_mapping: Optional[Dict[str, str]] = None,
     document_id_column: Optional[Any] = None,
-) -> List[PipelineResult]:
+    rate_limit_checker: Optional[Callable] = None
+) -> Tuple[List[PipelineResult], int]:
     """Process a dataframe through the KG pipeline row by row.
     
     Args:
@@ -25,12 +26,14 @@ async def build_kg_from_df(
         text_column: The column containing the text to process
         document_metadata_mapping: Optional mapping of document property names to dataframe columns
         document_id_column: Optional column to use as document ID. A random UUID will be generated if not provided.
+        rate_limit_checker: Optional function to check and enforce rate limits before LLM calls.
     
     Returns:
-        List of pipeline results, one per row
+        tuple: List of pipeline results, one per row; and the number of LLM calls made.
     """
     
     results = []
+    llm_calls = 0
     row_counter = 0
     start_time = time.time()
     
@@ -68,6 +71,10 @@ async def build_kg_from_df(
             # Get document ID if column specified
             doc_id = row.get(document_id_column) if document_id_column else str(uuid.uuid4())
             
+            # Check rate limit before making an LLM call
+            if rate_limit_checker:
+                rate_limit_checker()
+
             # Process the text with the pipeline
             result = await kg_pipeline.run_async(
                 text=text,
@@ -76,6 +83,7 @@ async def build_kg_from_df(
                 document_id=doc_id
             )
             results.append(result)
+            llm_calls += 1  # Increment LLM call count
             print(f"Result: {result}")
         else:
             print(f"Skipping row {row_counter} due to empty text")
@@ -86,4 +94,4 @@ async def build_kg_from_df(
         print(f"Elapsed time: {elapsed_time:.2f} seconds")
         print(f"Estimated time remaining: {(elapsed_time / row_counter) * (df.shape[0] - row_counter):.2f} seconds\n")
     
-    return results
+    return results, llm_calls
