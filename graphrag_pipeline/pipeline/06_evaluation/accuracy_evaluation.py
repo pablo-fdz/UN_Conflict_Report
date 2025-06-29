@@ -488,7 +488,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 
                                 # Get the base evaluation prompt for the accuracy evaluation
                                 # from the configuration files
-                                base_eval_prompt = evaluation_config['accuracy_evaluation']['base_eval_prompt']
+                                base_eval_prompt_template = evaluation_config['accuracy_evaluation']['base_eval_prompt']
 
                                 # Add context from previously true claims to the evaluation
                                 if previously_true_claims:
@@ -499,7 +499,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 # Format the base evaluation prompt with the previously true claims
                                 # This will be used to provide context for the evaluation
                                 try:
-                                    base_eval_prompt = base_eval_prompt.format(previously_true_claims = true_claims_str)
+                                    base_eval_prompt = base_eval_prompt_template.replace("{previously_true_claims}", true_claims_str)  # Use replace instead of format to avoid errors with missing keys
                                 except KeyError as e:
                                     raise KeyError(f"Missing key in base_eval_prompt: {e}. Please ensure the prompt is correctly formatted with all required placeholders.")
 
