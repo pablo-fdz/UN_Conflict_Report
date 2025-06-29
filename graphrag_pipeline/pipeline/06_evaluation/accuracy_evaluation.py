@@ -378,7 +378,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         
                         section_claims_list = []  # List to store claims for the current section
                         
-                        # ========== 5. Execute GraphRAG pipeline ==========
+                        # ========== 5. Execute GraphRAG pipeline to extract answers for each question ==========
 
                         # The GraphRAG class is too rigid for this use case, 
                         # as it uses the same `query_text`  both the retriever 
@@ -480,11 +480,30 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                     if all_sections_results:
                         print(f"Evaluating claims for report: {Path(report_path).name}")
 
+                        previously_true_claims = []  # List to store claims evaluated as "true"
+
                         # Iterate through sections and claims to evaluate each one
                         for section_data in all_sections_results:
 
                             for claim_data in section_data.get("claims", []):
                                 
+                                # Get the base evaluation prompt for the accuracy evaluation
+                                # from the configuration files
+                                base_eval_prompt = evaluation_config['accuracy_evaluation']['base_eval_prompt']
+
+                                # Add context from previously true claims to the evaluation
+                                if previously_true_claims:
+                                    true_claims_str = "\n".join(f"- {claim}" for claim in previously_true_claims)
+                                else:
+                                    true_claims_str = "No previously verified true claims."
+                                
+                                # Format the base evaluation prompt with the previously true claims
+                                # This will be used to provide context for the evaluation
+                                try:
+                                    base_eval_prompt = base_eval_prompt.format(previously_true_claims = true_claims_str)
+                                except KeyError as e:
+                                    raise KeyError(f"Missing key in base_eval_prompt: {e}. Please ensure the prompt is correctly formatted with all required placeholders.")
+
                                 # Check and enforce rate limit before the evaluation call
                                 check_rate_limit()
 
@@ -492,10 +511,16 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                     llm_evaluator=llm_evaluator,
                                     claim_text=claim_data.get("claim"),
                                     questions_and_answers=claim_data.get("questions", {}),
-                                    base_eval_prompt=evaluation_config['accuracy_evaluation']['base_eval_prompt'],
+                                    base_eval_prompt=base_eval_prompt,
                                     structured_output=True
                                 )
+
                                 claim_data.update(eval_result)  # Update the claim_data with the "justification" and "conclusion" fields
+
+                                # If the claim is true, add it to the list for context in subsequent evaluations
+                                if eval_result.get("conclusion") == "true":
+                                    previously_true_claims.append(claim_data.get("claim"))
+
                                 llm_usage += 1 # Increment LLM usage for each claim evaluation
 
                         evaluated_data = all_sections_results

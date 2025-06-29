@@ -134,11 +134,11 @@ class AccuracyEvaluator:
         # Format the Q&A for the prompt
         q_and_a_str = json.dumps(questions_and_answers, indent=2)
 
-        # Create the prompt and format it by inserting the claim text and Q&A
-        prompt = base_eval_prompt.format(
-            claim_text=claim_text,
-            questions_and_answers_json=q_and_a_str
-        )
+        try:
+            # Create the prompt and format it by inserting the claim text and Q&A
+            prompt = base_eval_prompt.format(claim_text=claim_text, questions_and_answers_json=q_and_a_str)
+        except KeyError as e:
+            raise KeyError(f"Missing key in base_eval_prompt: {e}. Please ensure the prompt is correctly formatted with all required placeholders.")
 
         try:
             response = llm_evaluator.invoke(prompt)  # Get the response content from the LLM
