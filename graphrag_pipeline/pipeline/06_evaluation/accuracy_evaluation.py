@@ -24,9 +24,10 @@ import re
 from neo4j_graphrag.embeddings import SentenceTransformerEmbeddings
 from library.kg_builder.utilities import GeminiLLM, get_rate_limit_checker
 from neo4j_graphrag.generation import RagTemplate
-from neo4j_graphrag.generation.graphrag import GraphRAG
 from library.evaluator import ReportProcessor, AccuracyEvaluator
-from library.evaluator.schemas import Claims, Questions, EvaluationResults
+from library.evaluator.schemas import Claims, Questions, EvaluationResults, GraphRAGResults
+from library.graphrag import CustomGraphRAG
+from library.graphrag.utilities import escape_lucene_query
 from neo4j_graphrag.retrievers import (
     VectorRetriever,
     VectorCypherRetriever,
@@ -203,6 +204,16 @@ async def main(country: str = None, reports_output_directory: str = None, accura
             model_params=llm_questions_params
         )
 
+    # Initialize LLM with GraphRAG configurations
+    llm_graphrag_config = evaluation_config['graphrag']['llm_config']
+    llm_graphrag_params = llm_graphrag_config.get('model_params', {}).copy()
+    llm_graphrag_params['response_schema'] = GraphRAGResults  # Set the response schema for the LLM GraphRAG model (list of dictionaries, with each dictionary containing a question and its answer)
+    llm_graphrag = GeminiLLM(
+        model_name=llm_graphrag_config['model_name'],
+        google_api_key=gemini_api_key,
+        model_params=llm_graphrag_params
+    )
+
     # Initialize LLM for evaluation
     llm_evaluator_config = evaluation_config['accuracy_evaluation']['llm_evaluator_config']
     llm_evaluator_params = llm_evaluator_config.get('model_params', {}).copy()
@@ -213,12 +224,6 @@ async def main(country: str = None, reports_output_directory: str = None, accura
         model_params=llm_evaluator_params
     )
 
-    # Initialize LLM with GraphRAG configurations
-    llm_graphrag = GeminiLLM(
-        model_name=evaluation_config['graphrag']['llm_config']['model_name'],
-        google_api_key=gemini_api_key,
-        model_params=evaluation_config['graphrag']['llm_config']['model_params']
-    )
     
     # ----- 3.3. Set LLM requests per minute limit -----
 
@@ -373,11 +378,24 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         
                         section_claims_list = []  # List to store claims for the current section
                         
-                        # ========== 5. Execute GraphRAG pipeline ==========
+                        # ========== 5. Execute GraphRAG pipeline to extract answers for each question ==========
+
+                        # The GraphRAG class is too rigid for this use case, 
+                        # as it uses the same `query_text`  both the retriever 
+                        # and the LLM prompt. The retriever needs a concise 
+                        # search query (the claim, which will be embedded), 
+                        # while the LLM needs a  detailed prompt with instructions.
+                        # Therefore, we will manually orchestrate the RAG steps: 
+                        # retrieve, format prompt with the retrieved context and
+                        # finally prompting the LLM with the retrieved context
+                        # and the final question in order to generate the answers.
+                        # This is all integrated within our CustomGraphRAG class,
+                        # created following the code of the GraphRAG class of 
+                        # neo4j-graphrag.
 
                         try:
-
-                            graphrag = GraphRAG(
+                            
+                            graphrag = CustomGraphRAG(
                                 llm=llm_graphrag,  # LLM for generating answers
                                 retriever=retriever_instance,  # Retriever for fetching relevant context 
                                 prompt_template=rag_template  # RAG template for formatting the prompt
@@ -391,30 +409,46 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 # Check and enforce rate limit before the GraphRAG call
                                 check_rate_limit()
 
+                                # Sanitize the claim text for use in the query
+                                # (e.g., escape special characters for Lucene queries)
+                                safe_claim = escape_lucene_query(claim)
+
                                 formatted_query_text = evaluation_config['graphrag']['query_text'].format(
                                     claim=claim,
                                     questions=questions
                                 )
+
+                                # As with neo4j's GraphRAG class, if return_context is
+                                # set to True, the `graphrag_results` will be a
+                                # dictionary with 2 keys: `answer` and `retriever_result`,
+                                # with the context extracted by the retriever
                                 graphrag_results = graphrag.search(
+                                    search_text=safe_claim,  # Search query for the retriever (i.e., the claim)
                                     query_text=formatted_query_text,  # User question that is used to search the knowledge graph (i.e., vector search and fulltext search is made based on this question); defaults to empty string if not provided
                                     message_history=None,  # Optional message history for conversational context (omitted for now)
                                     examples=evaluation_config['graphrag'].get('examples', ''),  # Optional examples to guide the LLM's response (defaults to empty string)
                                     retriever_config=retriever_search_params,  # Configuration for the search parameters of the input retriever
-                                    return_context=evaluation_config.get('return_context', True),  # Whether to return the context used for generating the answer (defaults to True)
+                                    return_context=evaluation_config.get('return_context', True),  # Whether to return the context used for generating the answer (defaults to True). Can be obtained with graphrag_results['retriever_result']
+                                    structured_output=True  # Whether to return the output in a structured format
                                 )
 
                                 llm_usage += 1  # Increment LLM usage by 1 for GraphRAG search
 
                                 # Get the generated answer from the GraphRAG results
-                                generated_answers = graphrag_results.answer  # Assuming the generated answer is a dictionary containing questions as keys and asnwers as values (e.g., {'question_1': 'answer_1', 'question_2': 'answer_2', ...})
-                            
-                                if not isinstance(generated_answers, dict):
-                                    try:
-                                        generated_answers = json.loads(generated_answers)
-                                    except Exception as e:
-                                        print(f"Failed to parse claims_and_questions as JSON: {e}")
-                                        continue
+                                generated_answers_obj = graphrag_results.answer  # The generated answer is structured as a list of dictionaries, each containing a question (inside the "question" key) and its answer (inside the "answer" key).
                                 
+                                # The generated_answers_obj.results is a list of Pydantic objects.
+                                # We now convert this list to a dictionary where the keys are the questions and the values are the answers.
+                                # Example: from a list of objects like [GraphRAGResultsBase(question='Q1', answer='A1'), ...]
+                                # to a dictionary like {'Q1': 'A1', ...}
+                                generated_answers = {}
+                                if hasattr(generated_answers_obj, 'results'):  # Access the results attribute of the GraphRAGResults object
+                                    generated_answers = {
+                                        item.question: item.answer 
+                                        for item in generated_answers_obj.results 
+                                        if hasattr(item, 'question') and hasattr(item, 'answer')
+                                    }
+
                                 # Create the claim data structure
                                 claim_data = {
                                     "claim": claim,
@@ -445,11 +479,30 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                     if all_sections_results:
                         print(f"Evaluating claims for report: {Path(report_path).name}")
 
+                        previously_true_claims = []  # List to store claims evaluated as "true"
+
                         # Iterate through sections and claims to evaluate each one
                         for section_data in all_sections_results:
 
                             for claim_data in section_data.get("claims", []):
                                 
+                                # Get the base evaluation prompt for the accuracy evaluation
+                                # from the configuration files
+                                base_eval_prompt_template = evaluation_config['accuracy_evaluation']['base_eval_prompt']
+
+                                # Add context from previously true claims to the evaluation
+                                if previously_true_claims:
+                                    true_claims_str = "\n".join(f"- {claim}" for claim in previously_true_claims)
+                                else:
+                                    true_claims_str = "No previously verified true claims."
+                                
+                                # Format the base evaluation prompt with the previously true claims
+                                # This will be used to provide context for the evaluation
+                                try:
+                                    base_eval_prompt = base_eval_prompt_template.replace("{previously_true_claims}", true_claims_str)  # Use replace instead of format to avoid errors with missing keys
+                                except KeyError as e:
+                                    raise KeyError(f"Missing key in base_eval_prompt: {e}. Please ensure the prompt is correctly formatted with all required placeholders.")
+
                                 # Check and enforce rate limit before the evaluation call
                                 check_rate_limit()
 
@@ -457,10 +510,16 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                     llm_evaluator=llm_evaluator,
                                     claim_text=claim_data.get("claim"),
                                     questions_and_answers=claim_data.get("questions", {}),
-                                    base_eval_prompt=evaluation_config['accuracy_evaluation']['base_eval_prompt'],
+                                    base_eval_prompt=base_eval_prompt,
                                     structured_output=True
                                 )
+
                                 claim_data.update(eval_result)  # Update the claim_data with the "justification" and "conclusion" fields
+
+                                # If the claim is true, add it to the list for context in subsequent evaluations
+                                if eval_result.get("conclusion") == "true":
+                                    previously_true_claims.append(claim_data.get("claim"))
+
                                 llm_usage += 1 # Increment LLM usage for each claim evaluation
 
                         evaluated_data = all_sections_results

@@ -34,12 +34,28 @@ class Questions(BaseModel):
         """
         c_and_a_list: list[QuestionsBase]
 
+class GraphRAGResultsBase(BaseModel):
+    question: str = Field(
+        description="A question that was asked about the claim."
+    )
+    answer: str = Field(
+        description="The answer provided in response to the question."
+    )
+
+class GraphRAGResults(BaseModel):
+    """
+    Represents the results of a GraphRAG evaluation.
+    This model contains a list of questions and their corresponding answers.
+    """
+    results: List[GraphRAGResultsBase] = Field(
+        description="A list of questions and answers related to the claims."
+    )
+
 class EvaluationConclusions(enum.Enum):
     """Enumeration for evaluation conclusions."""
     TRUE = "true"
     FALSE = "false"
     MIXTURE = "mixture"
-
 
 class EvaluationResults(BaseModel):
     """
