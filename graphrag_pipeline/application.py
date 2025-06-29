@@ -20,6 +20,7 @@ class Application:
             build_kg: bool = False,
             resolve_ex_post: bool = False,
             graph_retrieval: list[str] = [],
+            accuracy_eval: str = None,
             output_directory: str = None
         ):
         """
@@ -36,6 +37,7 @@ class Application:
                 Defaults to False (ex-post resolution is not enabled).
             graph_retrieval (list[str]): List of countries for which to do GraphRAG. 
                 Defaults to an empty list (GraphRAG is not performed, no report is generated).
+            accuracy_eval (str): Flag or path for accuracy evaluation. Defaults to None.
             output_directory (str): Directory to save the generated reports. Defaults
                 to None (reports saved in the default directory).
         """
@@ -46,6 +48,7 @@ class Application:
         self.build_kg = build_kg
         self.resolve_ex_post = resolve_ex_post
         self.graph_retrieval = graph_retrieval
+        self.accuracy_eval = accuracy_eval
         self.output_directory = output_directory
 
         # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
@@ -87,7 +90,12 @@ class Application:
             if self.graph_retrieval:
                 self.logger.info(f"Running graph retrieval: {self.graph_retrieval}")
                 self._run_graph_retrieval()
-                
+            
+            # Step 5: Accuracy Evaluation
+            if self.accuracy_eval:
+                self.logger.info(f"Running accuracy evaluation: {self.accuracy_eval}")
+                self._run_accuracy_evaluation()
+
             self.logger.info(f"{self.name} completed successfully")
             
         except Exception as e:
@@ -315,6 +323,61 @@ class Application:
 
         else:
             pass  # If no countries are passed for graph retrieval, skip this step
+    
+    def _run_accuracy_evaluation(self):
+        """Run accuracy evaluation of the generated reports."""
+        
+        # Case 1: Default evaluation for countries from --retrieval
+        if self.accuracy_eval == 'default_eval':
+            if not self.graph_retrieval:
+                raise ValueError("--accuracy-eval requires --retrieval to know which reports to evaluate.")
+            
+            self.logger.info(f"Running accuracy evaluation for reports generated for: {', '.join(self.graph_retrieval)}")
+            for country in self.graph_retrieval:
+                self._execute_evaluation_script(country=country)
+
+        # Case 2: Evaluation for a specific report file
+        elif self.accuracy_eval and os.path.isfile(self.accuracy_eval):
+            self.logger.info(f"Running accuracy evaluation for specific report: {self.accuracy_eval}")
+            self._execute_evaluation_script(report_path=self.accuracy_eval)
+        
+        # Case 3: Invalid argument
+        elif self.accuracy_eval:
+            self.logger.error(f"Invalid path for --accuracy-eval: {self.accuracy_eval}. File not found.")
+            raise FileNotFoundError(f"The report specified for --accuracy-eval does not exist: {self.accuracy_eval}")
+
+    def _execute_evaluation_script(self, country: str = None, report_path: str = None):
+        """Helper method to set environment and run the evaluation script."""
+        
+        script_path = "pipeline.06_evaluation.accuracy_evaluation"
+        
+        if not importlib.util.find_spec(script_path):
+            self.logger.error(f"Accuracy evaluation module not found at {script_path}.")
+            return
+
+        try:
+            # Set environment variables for the script
+            if country:
+                os.environ['GRAPHRAG_COUNTRY'] = country
+            if report_path:
+                os.environ['GRAPHRAG_EVAL_REPORT_PATH'] = report_path
+            if hasattr(self, 'output_directory') and self.output_directory:
+                os.environ['GRAPHRAG_OUTPUT_DIR'] = self.output_directory
+            
+            self.logger.info(f"Executing script: {script_path}")
+            runpy.run_module(script_path, run_name="__main__")
+            self.logger.info(f"Successfully executed accuracy evaluation for {country or report_path}.")
+
+        except Exception as e:
+            self.logger.error(f"Error executing accuracy evaluation script for {country or report_path}: {str(e)}")
+        finally:
+            # Clean up environment variables
+            if 'GRAPHRAG_COUNTRY' in os.environ:
+                del os.environ['GRAPHRAG_COUNTRY']
+            if 'GRAPHRAG_EVAL_REPORT_PATH' in os.environ:
+                del os.environ['GRAPHRAG_EVAL_REPORT_PATH']
+            if 'GRAPHRAG_OUTPUT_DIR' in os.environ:
+                del os.environ['GRAPHRAG_OUTPUT_DIR']
 
     def _load_configs(self):
         """Load all configuration files necessary to run the program."""
