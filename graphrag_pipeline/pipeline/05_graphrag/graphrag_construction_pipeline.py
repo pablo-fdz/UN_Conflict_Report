@@ -16,9 +16,8 @@ from dotenv import load_dotenv
 import json
 from neo4j_graphrag.retrievers.base import Retriever
 from library.kg_indexer import KGIndexer
-from library.kg_builder.utilities import GeminiLLM
+from library.kg_builder.utilities import GeminiLLM, get_rate_limit_checker
 from neo4j_graphrag.generation import RagTemplate
-from neo4j_graphrag.generation.graphrag import GraphRAG
 from library.graphrag import CustomGraphRAG
 
 # Neo4j and Neo4j GraphRAG imports
@@ -36,7 +35,9 @@ class GraphRAGConstructionPipeline:
         self.config_files_path = os.path.join(self.graphrag_pipeline_dir, 'config_files')  # Find path to config_files folder
         self._load_configs()
         self._setup_credentials()
-        
+        self._set_llm_rate_limit()
+        self.llm_usage = 0  # Track LLM usage for rate limiting
+
     def _load_configs(self):
         """Load all configuration files."""
 
@@ -76,6 +77,15 @@ class GraphRAGConstructionPipeline:
         if not self.gemini_api_key:
             raise ValueError("Gemini API key is not set. Please provide a valid API key.")
     
+    def _set_llm_rate_limit(self):
+        
+        # Get rate limit from config, default to 20
+        rpm = self.graphrag_config['llm_config'].get('max_requests_per_minute', 20)
+        # Subtract 20% for safety
+        safe_rpm = round(rpm - rpm * 0.2)
+        print(f"Applying a global rate limit of LLM requests of {safe_rpm} requests per minute.")
+        self.check_rate_limit = get_rate_limit_checker(safe_rpm)
+
     def _get_indexes(self, driver: neo4j.Driver):
         """Get the vector and fulltext indexes in the database."""
 
@@ -145,6 +155,9 @@ class GraphRAGConstructionPipeline:
 
             # Format the query text for generating the report with the input country
             formatted_query_text = self.graphrag_config.get('query_text', '').format(country=country)  # Use the country in the query text if specified, otherwise use an empty string
+            
+            # Check rate limit before LLM call
+            self.check_rate_limit()
 
             # Generate the answer using the GraphRAG pipeline
             graphrag_results = graphrag.search(
@@ -157,6 +170,8 @@ class GraphRAGConstructionPipeline:
                 structured_output=False  # Whether to return the output in a structured format (in this case, set to False since we want a markdown report - not a structured JSON output)
             )
             
+            self.llm_usage += 1  # Increment the LLM usage counter
+
             # Get the generated answer from the GraphRAG results (the string)
             generated_answer = graphrag_results.answer
 
@@ -166,6 +181,8 @@ class GraphRAGConstructionPipeline:
         except Exception as e:
             raise RuntimeError(f"Error during GraphRAG construction pipeline execution: {e}")
         
+        print(f"\n=== LLM requests made in this run: {self.llm_usage} ===\n")
+
         return generated_answer  # Return the generated answer from the GraphRAG pipeline
     
     def save_report_to_markdown(

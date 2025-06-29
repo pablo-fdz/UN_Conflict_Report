@@ -543,7 +543,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 else:  
                     pass  
         
-        print(f"\n=== Estimate of the number of LLM requests (potential overestimation): {llm_usage} ===\n")
+        print(f"\n=== Estimated number of LLM requests (potential overestimation): {llm_usage} ===\n")
 
         driver.close()
 

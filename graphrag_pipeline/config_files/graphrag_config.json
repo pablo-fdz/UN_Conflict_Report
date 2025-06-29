@@ -3,7 +3,8 @@
         "model_name": "gemini-2.5-flash",
         "model_params": {
             "temperature": 0.0
-        }
+        },
+        "max_requests_per_minute": 10
     },
     "rag_template_config": {
         "template": "# Question:\n{query_text}\n \n# Context:\n{context}\n \n# Examples:\n{examples}\n \n# Answer:\n",
