@@ -9,6 +9,8 @@
         "template": "# Question:\n{query_text}\n \n# Context:\n{context}\n \n# Examples:\n{examples}\n \n# Answer:\n",
         "system_instructions": "Answer the Question using the following Context. Only respond with information mentioned in the Context. Do not inject any speculative information not mentioned. If no examples are provided, omit the Examples section in your answer."
     },
-    "query_text": "Generate a brief security report for {country} in the last year, with a forward-looking perspective on the future of the country. Structure the report so that events are at the center of it. Format the report as markdown text. Cite the sources of information used in the report.",
-    "examples": ""
+    "search_text": "Security events, conflicts, and political stability in {country}.",
+    "query_text": "Generate a comprehensive security report for {country} based on the provided context. The report should cover recent events from the last year and offer a forward-looking perspective on the country's stability. Structure the report with a clear focus on key events, their impact, and the actors involved. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the context.",
+    "examples": "",
+    "return_context": true
 }
