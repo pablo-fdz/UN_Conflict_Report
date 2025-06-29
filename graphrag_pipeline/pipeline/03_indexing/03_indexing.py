@@ -6,7 +6,7 @@ from pathlib import Path
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
 # modules in parent directory)
 script_dir = Path(__file__).parent  # Get the directory where this script is located
-graphrag_pipeline_dir = script_dir.parent  # Get the graphrag_pipeline directory
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
 if graphrag_pipeline_dir not in sys.path:
     sys.path.append(graphrag_pipeline_dir)
 

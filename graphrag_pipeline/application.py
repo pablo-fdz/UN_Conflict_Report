@@ -220,7 +220,7 @@ class Application:
 
         try:
             # Set the path to the appropriate script
-            script_path = f"pipeline.03_indexing"
+            script_path = f"pipeline.03_indexing.03_indexing"
             
             # Ensure the script path is valid
             if not importlib.util.find_spec(script_path):
@@ -246,7 +246,7 @@ class Application:
 
             try:
                 # Set the path to the appropriate script
-                script_path = f"pipeline.04_ex_post_resolver"
+                script_path = f"pipeline.04_ex_post_resolution.04_ex_post_resolver"
                 
                 # Ensure the script path is valid
                 if not importlib.util.find_spec(script_path):
