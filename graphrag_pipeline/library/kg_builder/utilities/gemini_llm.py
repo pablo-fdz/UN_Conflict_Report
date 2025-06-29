@@ -3,6 +3,7 @@ Useful documentation:
 - google-genai library: https://googleapis.github.io/python-genai/index.html
 - API documentation of neo4j-graphrag for design of custom LLMInterface: https://neo4j.com/docs/neo4j-graphrag-python/current/api.html#llminterface
 - User guide of neo4j-graphrag for design of custom LLMInterface: https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#using-a-custom-model
+- Generation of structured output with Google Gemini: https://ai.google.dev/gemini-api/docs/structured-output
 - Avoiding resource exhaustion with the Google Gemini API and tenacity: https://cloud.google.com/blog/products/ai-machine-learning/learn-how-to-handle-429-resource-exhaustion-errors-in-your-llms.
     - More solutions here: https://support.google.com/gemini/thread/343007251/resource-exhausted-though-to-my-knowledge-staying-within-quotas?hl=en
 """
