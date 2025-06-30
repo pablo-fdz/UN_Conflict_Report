@@ -4,18 +4,19 @@
         "chunk_overlap": 1000
     },
     "embedder_config": {
-        "model_name": "all-MiniLM-L6-v2",
-        "model_params": {
-        }
+        "model_name": "all-MiniLM-L6-v2"
     },
     "llm_config": {
         "model_name": "gemini-2.5-flash",
         "model_params": {
-            "temperature": 0.0
-        }
+            "temperature": 0.0,
+            "response_mime_type": "application/json"
+        },
+        "max_requests_per_minute": 10
     },
     "schema_config": {
         "create_schema": true,
+        "suggest_pattern": true,
         "nodes": [
             {"label": "Event", 
             "description": "Significant occurrences of the input text, such as conflicts, elections, coups, attacks or any other relevant information.",
@@ -98,7 +99,6 @@
                 {"name": "until", "type": "DATE", "description": "Date when the location was last reported to be within the larger geographical entity."}
             ]}
         ],
-        "suggest_pattern": true,
         "triplets": [
 
             ["Event", "HAPPENED_IN", "Location"],

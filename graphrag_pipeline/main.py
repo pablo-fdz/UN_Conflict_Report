@@ -41,6 +41,15 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        '--accuracy-eval',
+        help='Run accuracy evaluation. Can be used alone to evaluate reports from the --retrieval step, or with a path to a specific report. Example: --accuracy-eval /path/to/report.md',
+        nargs='?', # 0 or 1 argument
+        const='default_eval', # Value if flag is present without an argument
+        default=None, # Value if flag is not present
+        dest='accuracy_eval'
+    )
+
+    parser.add_argument(
         '--output-dir',
         help='String of the directory to save the generated reports. If not specified, uses default directory structure.',
         type=str,
@@ -60,6 +69,7 @@ def main():
         build_kg=args.build_kg,
         resolve_ex_post=args.resolve_ex_post,
         graph_retrieval=args.graph_retrieval,
+        accuracy_eval=args.accuracy_eval,
         output_directory=args.output_directory
     )
     
