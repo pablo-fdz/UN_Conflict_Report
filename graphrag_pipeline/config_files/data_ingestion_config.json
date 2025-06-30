@@ -21,8 +21,8 @@
   "google_news": {
     "ingestion": false,
     "include_in_kg": false,
-    "start_date": "2025-05-01",
-    "end_date": "2025-06-01",
+    "start_date": "2025-05-13",
+    "end_date": "2025-05-31",
     "country": "United States",
     "query": {
       "language": "en",

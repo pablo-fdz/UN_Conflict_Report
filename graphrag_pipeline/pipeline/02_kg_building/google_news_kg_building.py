@@ -39,7 +39,7 @@ async def main():
     metadata_mapping = {
         'date': 'date',
         'url': 'decoded_url',
-        'source': 'source'
+        'domain': 'source'
     }
 
     # Run the KG pipeline with the loaded data
