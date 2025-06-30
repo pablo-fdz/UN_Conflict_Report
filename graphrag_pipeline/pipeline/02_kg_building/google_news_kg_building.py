@@ -107,47 +107,15 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
 
     # ==================== 1. Load data ====================
 
+    # TODO: Method to load Google News data here
+    # Also figure out google news parquet naming
+    google_news_data_dir = graphrag_pipeline_dir / 'data' / 'google_news'
+    df = None  # Placeholder for actual DataFrame loading logic
+    if df['date'].dtype == pl.Date:
+        df = df.with_columns(pl.col('date').cast(pl.String))
+
     try:
-        # Find Google News data files
-        data_dir = os.path.join(graphrag_pipeline_dir, 'data', 'google')
-        
-        if not os.path.exists(data_dir):
-            raise FileNotFoundError(f"Google News data directory not found: {data_dir}")
-        
-        # Get list of available files
-        available_files = [f for f in os.listdir(data_dir) if f.endswith('.parquet')]
-        
-        if not available_files:
-            raise FileNotFoundError(f"No Google News parquet files found in: {data_dir}")
-        
-        # Select file based on pattern (name of a country) or use first available
-        if data_file_pattern:
-            matching_files = [f for f in available_files if data_file_pattern.lower() in f.lower()]
-            if not matching_files:
-                print(f"No files matching country '{data_file_pattern}' found.")
-                print(f"Available files: {available_files}")
-                raise FileNotFoundError(f"No files matching country: {data_file_pattern}")
-            selected_file = matching_files[0]
-        else:
-            selected_file = available_files[0]
-        
-        df_path = os.path.join(data_dir, selected_file)
-        print(f"Loading data from: {selected_file}")
-        
-        df = pl.read_parquet(df_path)
-        
-        # Apply sampling if specified
-        if sample_size:
-            original_size = len(df)
-            df = df.sample(sample_size)
-            print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
-        
-        # Convert date column to string format for metadata
-        if 'date' in df.columns:
-            df = df.with_columns([
-                pl.col('date').dt.strftime('%Y-%m-%d').alias('date')
-            ])
-    
+        pass  # Placeholder for Google News data loading logic
     except Exception as e:
         print(f"Error loading Google News data: {e}")
         return []
@@ -161,9 +129,9 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     # Define metadata mapping for Google News data (document properties additional 
     # to base field to dataframe columns)
     metadata_mapping = {
-        "date": "date",           # Event date
-        "domain": "domain",
-        "url": "url" # if available
+        'date': 'date',
+        'url': 'decoded_url',
+        'domain': 'source'
     }
 
     # Run the KG pipeline with the loaded data
@@ -171,8 +139,8 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     
     results = await kg_pipeline.run_async(
         df=df,
-        document_base_field='item_id',
-        text_column='text',
+        document_base_field='id',
+        text_column='full_text',
         document_metadata_mapping=metadata_mapping,
         document_id_column='item_id'  # Use item_id as document ID
     )
