@@ -667,7 +667,6 @@ Configuration of the examples passed to the LLM to construct the Cypher queries 
 ]
 ```
 
-
 ### Most Impactful Parameters
 
 The `enabled` flag for each retriever determines which strategies are available. The choice of retriever has a massive impact on the quality of the context provided to the final generation LLM. `HybridCypherRetriever` is often a powerful choice as it combines keyword search, semantic search, and graph traversal, but the `retrieval_query` must be well-crafted. Except for the `VectorCypherRetriever`, the rest should be avoided.
@@ -676,32 +675,139 @@ The `enabled` flag for each retriever determines which strategies are available.
 
 This file configures the final step of the pipeline: generating the security report using the context fetched by a retriever.
 
--   **llm_config**: The LLM used to synthesize the final report from the retrieved context.
--   **rag_template_config**: The prompt template for the final report generation.
-    -   *system_instructions*: High-level instructions for the LLM on how to behave (e.g., "Answer only using the context provided").
--   **search_text**: The initial, broad query used to kick off the retrieval process (e.g., "Security events in {country}").
--   **query_text**: The detailed prompt given to the LLM to generate the final report, instructing it on structure, tone, and content.
--   **examples**: Few-shot examples to guide the LLM's output format (currently empty).
--   **return_context**: If `true`, the context used to generate the report will be saved alongside the report for debugging and verification.
+### llm_config
+
+The LLM used to synthesize the final report from the retrieved context. The structure is the same as in [`kg_building_config.json`](#llm_config).
+
+*Trade-offs*: 
+- A more powerful and creative model (e.g., with a higher temperature) can generate more fluent and comprehensive reports, but may be more expensive and risk more hallucinations. 
+- A less powerful model might produce more basic reports but will be faster and cheaper.
+
+*Recommended value*: Use a high-quality model (like `gemini-2.5-flash` or better) for this final generation step, as it directly impacts the quality of the end product and it will not be called as many times as in other steps (e.g., entity extraction or evaluation). A low temperature (`0.0`) is recommended to ensure the report is based strictly on the provided context. Finally, consider setting as well the `max_output_tokens` parameter to limit the size of the report.
+
+### rag_template_config
+
+The prompt template for the final report generation.
+
+#### *template*
+The main template string that structures the final prompt to the LLM, including placeholders for `{query_text}`, `{context}`, and `{examples}`.
+
+*Recommended value*: leave the template unchanged. The default template is generally sufficient, but can be modified if you need to fundamentally change how context and questions are presented to the LLM. Placeholders for `{query_text}`, `{context}`, and `{examples}` are needed.
+
+```json
+"# Question:\n{query_text}\n \n# Context:\n{context}\n \n# Examples:\n{examples}\n \n# Answer:\n"
+```
+
+#### *system_instructions*
+
+High-level instructions for the LLM on its role and constraints (e.g., "Answer only using the context provided").
+
+*Recommended value*: Keep instructions clear and concise. The default is a good starting point to prevent the LLM from hallucinating information not present in the retrieved context.
+
+```json
+"Answer the Question using the following Context. Only respond with information mentioned in the Context. Do not inject any speculative information not mentioned. If no examples are provided, omit the Examples section in your answer."
+```
+
+### search_text
+
+The initial, broad query used to kick off the retrieval process from the knowledge graph. This search text will be used to retrieve the most relevant context, through the cosine similarity of the search text's embedding and (with hybrid retrievers) with full text search. The `{country}` placeholder will be replaced with the target country at runtime.
+
+*Trade-offs*: A broader query retrieves more context, which can lead to a more comprehensive report but also introduces more noise. A narrower query is more focused but might miss relevant tangential information.
+
+*Recommended value*: The default `"Security events, conflicts, and political stability in {country}."` is a good balance. Adjust it if you need to focus the report on a more specific topic (e.g., "Economic stability and trade agreements in {country}").
+
+### query_text
+
+The detailed prompt given to the LLM to generate the final report. It instructs the model on the desired structure, tone, and content. This query is *not* used to retrieve relevant context. 
+
+*Trade-offs*: 
+- A very detailed prompt gives you more control over the output but can be restrictive. 
+- A more open-ended prompt allows for more creativity from the LLM but may result in less structured reports.
+- Consider as well the context window of the LLM that is used, as well as positional bias.
+
+*Recommended value*: Be as specific as possible in your instructions. The suggested prompt is designed to produce a structured, markdown-formatted security report with citations, which is ideal for the project's goals.
+
+*Example query* (open-ended):
+
+```json
+"Generate a comprehensive security report for {country} based on the provided context. The report should cover recent events from the last year and offer a forward-looking perspective on the country's stability. Structure the report with a clear focus on key events, their impact, and the actors involved. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the context."
+```
+
+### examples
+
+Few-shot examples to guide the LLM's output format.
+
+*Recommended value*: Leave this empty (`""`) if the `query_text` is detailed enough. High-quality models often perform well without examples for generation tasks. If the output format is consistently wrong, you can add a short example of the desired report structure here.
+
+### return_context
+
+If `true`, the context used to generate the report will be saved alongside the report itself.
+
+*Recommended value*: set to `true`. This is invaluable for debugging, verification, and understanding why the LLM included certain information in its report.
 
 ### Most Impactful Parameters
 
-`query_text` is the most important parameter here, as it directly instructs the LLM on what kind of report to generate. The `llm_config` also plays a key role in the quality and coherence of the final output.
+`search_text` is essential to determine which information is retrieved from the knowledge graph. `query_text` is the most important parameter here, as it directly instructs the LLM on what kind of report to generate. The `llm_config` also plays a key role in the quality and coherence of the final output.
 
 ## `evaluation_config.json`
 
 This file configures the accuracy evaluation pipeline, which fact-checks the generated reports against the knowledge graph.
 
--   **section_split**:
-    -   *split_pattern*: A regular expression used to split the generated report into sections for evaluation.
--   **accuracy_evaluation**: Contains prompts and configurations for the evaluation steps.
-    -   *base_claims_prompt*: The prompt used to instruct an LLM to extract verifiable claims from a report section.
-    -   *base_questions_prompt*: The prompt used to generate questions to verify each claim.
-    -   *base_eval_prompt*: The prompt used to make a final judgment (true, false, mixture) on a claim based on the answers retrieved from the KG.
-    -   *llm_claims_config*, *llm_questions_config*, *llm_evaluator_config*: Separate LLM configurations for each step of the evaluation process (claim extraction, question generation, final evaluation).
--   **retrievers**: Configures the retriever used during the evaluation phase to find answers to the verification questions in the knowledge graph. The structure is identical to `kg_retrieval_config.json`.
--   **graphrag**: Configures the RAG process used to answer the verification questions.
-    -   *query_text*: The prompt used to ask the RAG pipeline to answer the verification questions for a given claim.
+### section_split
+
+#### *split_pattern*
+A regular expression used to split the generated report into individual sections for evaluation.
+
+*Recommended value*: The default `"(?m)^## (.+?)\\s*\\n(.*?)(?=^## |\\Z)"` is designed to split a markdown report by its level-2 headings (`##`). This is suitable for the report structure defined in `graphrag_config.json`.
+
+### accuracy_evaluation
+
+Contains prompts and configurations for the multi-step evaluation process.
+
+#### *base_claims_prompt*
+The prompt used to instruct an LLM to extract verifiable, atomic claims from a report section.
+
+*Recommended value*: The provided prompt is heavily engineered with examples and notes to guide the LLM in extracting high-quality, self-contained claims. It is recommended to use it as is.
+
+#### *base_questions_prompt*
+The prompt used to generate specific, answerable questions to verify each extracted claim.
+
+*Recommended value*: The default prompt is effective. It instructs the LLM to act as a journalist and create clear, concise questions.
+
+#### *base_eval_prompt*
+The prompt used to make a final judgment (true, false, or mixture) on a claim based on the answers retrieved from the KG and previously verified claims.
+
+*Recommended value*: This prompt defines the final evaluation logic. The default is well-structured for this task.
+
+#### *llm_claims_config*, *llm_questions_config*, *llm_evaluator_config*
+Separate LLM configurations for each step of the evaluation process (claim extraction, question generation, and final evaluation).
+
+*Recommended value*: Use fast and cheap models (like `gemini-2.5-flash-lite-preview-06-17`) for these tasks, as they are structured and do not require deep creativity. A low temperature (`0.0`) is recommended for the claims and evaluator models to ensure deterministic and objective outputs.
+
+### retrievers
+
+Configures the retriever used during the evaluation phase to find answers to the verification questions in the knowledge graph. The structure is identical to `kg_retrieval_config.json`.
+
+*Recommended value*: Use the same high-performance retriever as in `kg_retrieval_config.json` (e.g., `HybridCypherRetriever`) to ensure the evaluation has access to the best possible context from the knowledge graph. Set `enabled` to `true` for your chosen retriever.
+
+### graphrag
+
+Configures the RAG process used to answer the verification questions generated in the evaluation pipeline.
+
+#### *llm_config*
+The LLM used to synthesize an answer from the context retrieved for a verification question.
+
+*Recommended value*: A fast, cheap, and accurate model is sufficient. Set temperature to `0.0` to ensure answers are strictly based on the provided context.
+
+#### *rag_template_config*
+The prompt template for answering the verification questions.
+
+*Recommended value*: The default template and system instructions are optimized to force the LLM to answer only using the provided context, which is critical for an objective evaluation.
+
+#### *query_text*
+The prompt that instructs the RAG pipeline on how to use the context to answer the verification questions for a given claim.
+
+*Recommended value*: The default prompt is well-suited for this task, instructing the model to answer concisely or state when there is not enough information.
 
 ### Most Impactful Parameters
 
