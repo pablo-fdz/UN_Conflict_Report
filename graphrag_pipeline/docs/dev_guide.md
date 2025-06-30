@@ -113,45 +113,6 @@ The default `SimpleKGPipeline` from `neo4j-graphrag` was not sufficient for two 
 1.  **Metadata Handling**: It lacks robust support for creating `Document` nodes with rich metadata from tabular data. Our `CustomKGPipeline` uses a `LexicalGraphBuilder` to link text chunks to a parent `Document` node that stores this metadata.
 2.  **Entity Resolution**: The default resolver (`SinglePropertyExactMatchResolver`) is too conservative. We use the `SpaCySemanticMatchResolver` to merge entities based on semantic similarity, which is more effective for real-world data.
 
-#### Schema Configuration
-
-In the schema configuration (`kg_building_config.json`), `nodes`, `edges` and `triplets` need to have the following structure:
-
-```json
-{
-    "schema_config": {
-        "nodes": [
-            {"label": "Event", "description": "...", "properties": [
-                {"name": "name", "type": "STRING", "description": "..."},
-                {"name": "date", "type": "DATE"}
-            ]}
-        ],
-        "edges": [
-            {"label": "OCCURRED_IN", "description": "...", "properties": [
-                {"name": "start_date", "type": "DATE"}
-            ]}
-        ],
-        "triplets": [
-            ["Event", "OCCURRED_IN", "Country"]
-        ]
-    }
-}
-```
-
-Possible property types are: `"BOOLEAN"`, `"DATE"`, `"FLOAT"`, `"INTEGER"`, `"STRING"`, etc.
-
-#### Embedding Models
-
-There is a trade-off between an embedding model's context window and the LLM's processing cost.
-
--   Embedding models like `all-MiniLM-L6-v2` have small context windows (e.g., 256 tokens), which may require splitting a single news article into multiple chunks.
--   Splitting articles increases the number of calls to the entity extraction LLM, which can be costly and hit rate limits.
--   While the most important information in news is often at the beginning, larger context windows can capture more nuance. Consider these `SentenceTransformer` models:
-    -   `all-mpnet-base-v2`: Best quality, 384 token limit.
-    -   `all-distilroberta-v1`: Faster, 512 token limit.
-    -   `all-MiniLM-L6-v2`: Fastest, good quality, 256 token limit.
--   An alternative is Google's `text-embedding-004`, which is free (with rate limits) and supports up to 2,048 tokens.
-
 ### 3. Knowledge Graph Indexing
 
 -   **Process**: Creates vector and full-text indexes on the `Chunk` nodes in the knowledge graph. This is crucial for efficient similarity searches and keyword lookups during the retrieval phase.
@@ -194,7 +155,8 @@ If you encounter unexpected errors, check for these common issues:
 -   **Neo4j Instance Inactive or Inexistent**: 
     -   Ensure your Neo4j Aura instance is existent, active and not paused ("a Free tier instance is considered inactive when there have been no write queries for 3 days", and "a paused Free Instance will be deleted after 30 days, and you won't be able to restore/recover its data" [source](https://support.neo4j.com/s/article/16094506528787-Support-resources-and-FAQ-for-Aura-Free-Tier)). 
     -   If self-hosting, make sure the database is running.
--   **Gemini API Rate Limits**: The free tier of the Gemini API has rate limits (e.g., tokens per minute, requests per day). Long-running processes or large datasets can exceed these limits, causing errors. Check the current limits [here](https://ai.google.dev/gemini-api/docs/rate-limits#free-tier).
+-   **CUDA errors with `torch`** when building the knowledge graph and embedding input texts. Consider using a CPU for better stability (performance should not be downgraded significantly since embedders are just used out-of-the-box).
+-   **Gemini API Rate Limits**: The free tier of the Gemini API has rate limits (e.g., tokens per minute, requests per day). Long-running processes or large datasets can exceed these limits, causing errors. Check the current limits [here](https://ai.google.dev/gemini-api/docs/rate-limits#free-tier). Usage of the API can be tracked and checked in [Google AI Studio](https://aistudio.google.com/usage).
 -   **Exceeded Tier Limitations of Neo4j Aura Instance**: for the free tier, up to 200,000 nodes and 400,000 relationships (edges) can be stored ([source](https://support.neo4j.com/s/article/16094506528787-Support-resources-and-FAQ-for-Aura-Free-Tier)).
 
 ## How to Contribute

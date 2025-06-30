@@ -115,7 +115,8 @@ python main.py --retrieval "Sudan" --accuracy-eval
 
 -   **No Internet Connection**: The pipeline requires internet to contact the Gemini API and Neo4j Aura.
 -   **Neo4j Instance Inactive**: Free Neo4j Aura instances pause after 3 days of inactivity and are deleted after 30 days of being paused. Ensure your instance is running before executing the pipeline.
--   **Gemini API Rate Limits**: The free tier has rate limits (e.g., tokens per minute). Long-running processes can cause errors. See the [rate limits here](https://ai.google.dev/gemini-api/docs/rate-limits#free-tier).
+-   **CUDA errors with `torch`** when building the knowledge graph and embedding input texts. Consider using a CPU for better stability (performance should not be downgraded significantly since embedders are just used out-of-the-box).
+-   **Gemini API Rate Limits**: The free tier has rate limits (e.g., tokens per minute). Long-running processes can cause errors. See the [rate limits here](https://ai.google.dev/gemini-api/docs/rate-limits#free-tier). Usage of the API can be tracked and checked in [Google AI Studio](https://aistudio.google.com/usage).
 -   **Neo4j Tier Limitations**: The free Aura tier is limited to ~200k nodes and ~400k relationships. Ingesting very large datasets may exceed these limits.
 
 ## For Developers
