@@ -11,11 +11,14 @@
     "llm_config": {
         "model_name": "gemini-2.5-flash",
         "model_params": {
-            "temperature": 0.0
-        }
+            "temperature": 0.0,
+            "response_mime_type": "application/json"
+        },
+        "max_requests_per_minute": 10
     },
     "schema_config": {
         "create_schema": true,
+        "suggest_pattern": true,
         "nodes": [
             {"label": "Event", 
             "description": "Significant occurrences of the input text, such as conflicts, elections, coups, attacks or any other relevant information.",
@@ -98,7 +101,6 @@
                 {"name": "until", "type": "DATE", "description": "Date when the location was last reported to be within the larger geographical entity."}
             ]}
         ],
-        "suggest_pattern": true,
         "triplets": [
 
             ["Event", "HAPPENED_IN", "Location"],
@@ -163,192 +165,192 @@
         "pass_examples": false,
         "examples": [
             {
-    "input_text": "Country: Sudan. State: South Darfur. Town: Rehaid Albirdi. Text: On 31 May 2025, RSF abducted 20 civilians across two days, including Barno Native Administration leader (Mayor), in Rahad El Berdi (Rehaid Albirdi, South Darfur), accusing them of collaborating with SAF. Number of fatalities: 0. Opposing sides: Rebel group-Civilians. Actor 1: Rapid Support Forces. Actor 2: Civilians (Sudan) (associated with: Barno Ethnic Group (Sudan)). Type of event: Violence against civilians (Abduction/forced disappearance).",
-    "schema": {
-        "nodes": [
-            {
-                "id": "0",
-                "label": "Event",
-                "properties": {
-                    "name": "Abduction of Civilians in Rehaid Albirdi",
-                    "date": "2025-05-31",
-                    "end_date": "2025-06-01",
-                    "type": "Violence against civilians (Abduction/forced disappearance)",
-                    "severity": 3,
-                    "description": "RSF abducted 20 civilians, including the Barno Native Administration leader, in Rehaid Albirdi, South Darfur."
-                }
+                "input_text": "Country: Sudan. State: South Darfur. Town: Rehaid Albirdi. Text: On 31 May 2025, RSF abducted 20 civilians across two days, including Barno Native Administration leader (Mayor), in Rahad El Berdi (Rehaid Albirdi, South Darfur), accusing them of collaborating with SAF. Number of fatalities: 0. Opposing sides: Rebel group-Civilians. Actor 1: Rapid Support Forces. Actor 2: Civilians (Sudan) (associated with: Barno Ethnic Group (Sudan)). Type of event: Violence against civilians (Abduction/forced disappearance).",
+                "schema": {
+                    "nodes": [
+                        {
+                            "id": "0",
+                            "label": "Event",
+                            "properties": {
+                                "name": "Abduction of Civilians in Rehaid Albirdi",
+                                "date": "2025-05-31",
+                                "end_date": "2025-06-01",
+                                "type": "Violence against civilians (Abduction/forced disappearance)",
+                                "severity": 3,
+                                "description": "RSF abducted 20 civilians, including the Barno Native Administration leader, in Rehaid Albirdi, South Darfur."
+                            }
+                        },
+                        {
+                            "id": "1",
+                            "label": "Actor",
+                            "properties": {
+                                "name": "Rapid Support Forces",
+                                "type": "Rebel group"
+                            }
+                        },
+                        {
+                            "id": "2",
+                            "label": "Actor",
+                            "properties": {
+                                "name": "Civilians (Sudan)",
+                                "type": "Civilian group",
+                                "associated_with": "Barno Ethnic Group (Sudan)"
+                            }
+                        },
+                        {
+                            "id": "3",
+                            "label": "Region",
+                            "properties": {
+                                "name": "Rehaid Albirdi, South Darfur, Sudan",
+                                "stability": 0.3
+                            }
+                        }
+                        ],
+                        "relationships": [
+                            {
+                                "type": "OCCURRED_IN",
+                                "start_node_id": "0",
+                                "end_node_id": "3",
+                                "properties": {
+                                    "start_date": null,
+                                    "end_date": null,
+                                    "certainty": 1.0
+                                }
+                            },
+                            {
+                                "type": "PARTICIPATED_IN",
+                                "start_node_id": "1",
+                                "end_node_id": "0",
+                                "properties": {
+                                    "role": "Perpetrator",
+                                    "significance": 1.0,
+                                    "start_date": null,
+                                    "end_date": null
+                                }
+                            },
+                            {
+                                "type": "PARTICIPATED_IN",
+                                "start_node_id": "2",
+                                "end_node_id": "0",
+                                "properties": {
+                                    "role": "Victim",
+                                    "significance": 1.0,
+                                    "start_date": null,
+                                    "end_date": null
+                                }
+                            }
+                        ]
+                    }
             },
             {
-                "id": "1",
-                "label": "Actor",
-                "properties": {
-                    "name": "Rapid Support Forces",
-                    "type": "Rebel group"
+                "input_text": "State, country: North Kurdufan, Sudan. Text: Multiple people injured in reported RSF drone strike in er-Rahad in Sudan's North Kurdufan state, sources tell Al Jazeera. Severity (from 1 to 4): 3. Theme: war & conflict. Tag: N/A. Topics: Sudan civil war, war & conflict, Er Rahad, Sudan, North Kurdufan, Sudan, Northern Africa, Sudan, Africa, MENA, EMEA",
+                "schema": {
+                    "nodes": [
+                        {
+                            "id": "0",
+                            "label": "Event",
+                            "properties": {
+                                "name": "RSF Drone Strike in Er Rahad",
+                                "date": null,
+                                "end_date": null,
+                                "type": "Airstrike",
+                                "severity": 3,
+                                "description": "Multiple people injured in a reported RSF drone strike in Er Rahad, North Kurdufan, Sudan."
+                            }
+                        },
+                        {
+                            "id": "1",
+                            "label": "Actor",
+                            "properties": {
+                                "name": "Rapid Support Forces",
+                                "type": "Rebel group"
+                            }
+                        },
+                        {
+                            "id": "2",
+                            "label": "Actor",
+                            "properties": {
+                                "name": "Civilians (Sudan)",
+                                "type": "Civilian group"
+                            }
+                        },
+                        {
+                            "id": "3",
+                            "label": "Town",
+                            "properties": {
+                                "name": "Er Rahad"
+                            }
+                        },
+                        {
+                            "id": "4",
+                            "label": "State",
+                            "properties": {
+                                "name": "North Kordofan"
+                            }
+                        },
+                        {
+                            "id": "5",
+                            "label": "Country",
+                            "properties": {
+                                "name": "Sudan"
+                            }
+                        },
+                        {
+                            "id": "6",
+                            "label": "Location",
+                            "properties": {
+                                "name": "Er Rahad, North Kurdufan, Sudan"
+                            }
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "type": "LOCATED_IN",
+                            "start_node_id": "3",
+                            "end_node_id": "4",
+                            "properties": {}
+                        },
+                        {
+                            "type": "LOCATED_IN",
+                            "start_node_id": "4",
+                            "end_node_id": "5",
+                            "properties": {}
+                        },
+                        {
+                            "type": "LOCATED_IN",
+                            "start_node_id": "6",
+                            "end_node_id": "4",
+                            "properties": {}
+                        },
+                        {
+                            "type": "OCCURRED_IN",
+                            "start_node_id": "0",
+                            "end_node_id": "6",
+                            "properties": {
+                                "certainty": 0.9
+                            }
+                        },
+                        {
+                            "type": "PARTICIPATED_IN",
+                            "start_node_id": "1",
+                            "end_node_id": "0",
+                            "properties": {
+                                "role": "Perpetrator",
+                                "significance": 1.0
+                            }
+                        },
+                        {
+                            "type": "PARTICIPATED_IN",
+                            "start_node_id": "2",
+                            "end_node_id": "0",
+                            "properties": {
+                                "role": "Victim",
+                                "significance": 1.0
+                            }
+                        }
+                    ]
                 }
-            },
-            {
-                "id": "2",
-                "label": "Actor",
-                "properties": {
-                    "name": "Civilians (Sudan)",
-                    "type": "Civilian group",
-                    "associated_with": "Barno Ethnic Group (Sudan)"
-                }
-            },
-            {
-                "id": "3",
-                "label": "Region",
-                "properties": {
-                    "name": "Rehaid Albirdi, South Darfur, Sudan",
-                    "stability": 0.3
-                }
-            }
-            ],
-            "relationships": [
-                {
-                    "type": "OCCURRED_IN",
-                    "start_node_id": "0",
-                    "end_node_id": "3",
-                    "properties": {
-                        "start_date": null,
-                        "end_date": null,
-                        "certainty": 1.0
-                    }
-                },
-                {
-                    "type": "PARTICIPATED_IN",
-                    "start_node_id": "1",
-                    "end_node_id": "0",
-                    "properties": {
-                        "role": "Perpetrator",
-                        "significance": 1.0,
-                        "start_date": null,
-                        "end_date": null
-                    }
-                },
-                {
-                    "type": "PARTICIPATED_IN",
-                    "start_node_id": "2",
-                    "end_node_id": "0",
-                    "properties": {
-                        "role": "Victim",
-                        "significance": 1.0,
-                        "start_date": null,
-                        "end_date": null
-                    }
-                }
-            ]
         }
-    },
-            {
-    "input_text": "State, country: North Kurdufan, Sudan. Text: Multiple people injured in reported RSF drone strike in er-Rahad in Sudan's North Kurdufan state, sources tell Al Jazeera. Severity (from 1 to 4): 3. Theme: war & conflict. Tag: N/A. Topics: Sudan civil war, war & conflict, Er Rahad, Sudan, North Kurdufan, Sudan, Northern Africa, Sudan, Africa, MENA, EMEA",
-    "schema": {
-        "nodes": [
-            {
-                "id": "0",
-                "label": "Event",
-                "properties": {
-                    "name": "RSF Drone Strike in Er Rahad",
-                    "date": null,
-                    "end_date": null,
-                    "type": "Airstrike",
-                    "severity": 3,
-                    "description": "Multiple people injured in a reported RSF drone strike in Er Rahad, North Kurdufan, Sudan."
-                }
-            },
-            {
-                "id": "1",
-                "label": "Actor",
-                "properties": {
-                    "name": "Rapid Support Forces",
-                    "type": "Rebel group"
-                }
-            },
-            {
-                "id": "2",
-                "label": "Actor",
-                "properties": {
-                    "name": "Civilians (Sudan)",
-                    "type": "Civilian group"
-                }
-            },
-            {
-                "id": "3",
-                "label": "Town",
-                "properties": {
-                    "name": "Er Rahad"
-                }
-            },
-            {
-                "id": "4",
-                "label": "State",
-                "properties": {
-                    "name": "North Kordofan"
-                }
-            },
-            {
-                "id": "5",
-                "label": "Country",
-                "properties": {
-                    "name": "Sudan"
-                }
-            },
-            {
-                "id": "6",
-                "label": "Location",
-                "properties": {
-                    "name": "Er Rahad, North Kurdufan, Sudan"
-                }
-            }
-        ],
-        "relationships": [
-            {
-                "type": "LOCATED_IN",
-                "start_node_id": "3",
-                "end_node_id": "4",
-                "properties": {}
-            },
-            {
-                "type": "LOCATED_IN",
-                "start_node_id": "4",
-                "end_node_id": "5",
-                "properties": {}
-            },
-            {
-                "type": "LOCATED_IN",
-                "start_node_id": "6",
-                "end_node_id": "4",
-                "properties": {}
-            },
-            {
-                "type": "OCCURRED_IN",
-                "start_node_id": "0",
-                "end_node_id": "6",
-                "properties": {
-                    "certainty": 0.9
-                }
-            },
-            {
-                "type": "PARTICIPATED_IN",
-                "start_node_id": "1",
-                "end_node_id": "0",
-                "properties": {
-                    "role": "Perpetrator",
-                    "significance": 1.0
-                }
-            },
-            {
-                "type": "PARTICIPATED_IN",
-                "start_node_id": "2",
-                "end_node_id": "0",
-                "properties": {
-                    "role": "Victim",
-                    "significance": 1.0
-                }
-            }
-        ]
-    }
-}
         ]
     },
     "entity_resolution_config": {
