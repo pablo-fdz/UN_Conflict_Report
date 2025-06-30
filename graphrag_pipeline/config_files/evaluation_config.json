@@ -70,11 +70,6 @@
         }
     },
     "graphrag": {
-        "embedder_config": {
-            "model_name": "all-MiniLM-L6-v2",
-            "model_params": {
-            }
-        },
         "llm_config": {
             "model_name": "gemini-2.5-flash-lite-preview-06-17",
             "model_params": {

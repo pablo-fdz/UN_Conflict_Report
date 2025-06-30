@@ -54,6 +54,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
         with open(os.path.join(config_files_path, 'evaluation_config.json'), 'r') as f:
             evaluation_config = json.load(f)
         
+        # Load KG building configurations (only to ensure that we use the same embedder at all steps)
+        with open(os.path.join(config_files_path, 'kg_building_config.json'), 'r') as f:
+            kg_building_config = json.load(f)
+
         # Load KG retrieval configurations
         with open(os.path.join(config_files_path, 'kg_retrieval_config.json'), 'r') as f:
             kg_retrieval_config = json.load(f)
@@ -254,7 +258,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
     
     # Initialize embedder RAG
     embedder = SentenceTransformerEmbeddings(
-        model=evaluation_config['graphrag']['embedder_config']['model_name']
+        model=kg_building_config['embedder_config']['model_name']
     )
 
     # Set default retrieval query for retrievers that do graph traversal
