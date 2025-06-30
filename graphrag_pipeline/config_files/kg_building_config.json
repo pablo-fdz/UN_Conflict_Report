@@ -361,13 +361,13 @@
         "FuzzyMatchResolver_config": {
             "filter_query": "WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}",
             "resolve_properties": ["name"],
-            "similarity_threshold": 0.8
+            "similarity_threshold": 0.9
         },
         "SpaCySemanticMatchResolver_config": {
             "filter_query": null,
             "resolve_properties": ["name"],
             "spacy_model": "en_core_web_lg",
-            "similarity_threshold": 0.8
+            "similarity_threshold": 0.95
         },
         "ex_post_resolver": "SinglePropertyExactMatchResolver"
     },
