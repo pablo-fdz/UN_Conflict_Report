@@ -147,8 +147,6 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
             df = df.with_columns([
                 pl.col('date').dt.strftime('%Y-%m-%d').alias('date')
             ])
-        
-        print(f"Loaded {len(df)} rows from Factal data")
     
     except Exception as e:
         print(f"Error loading Factal data: {e}")
@@ -169,9 +167,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     }
 
     # Run the KG pipeline with the loaded data
-    print("Starting Knowledge Graph construction with enhanced SpaCy resolver...")
-    print("Using higher similarity threshold (0.999) to reduce inappropriate merging")
-    print("This approach better handles geographically distinct entities")
+    print("Using SpaCySemanticMatchResolver with similarity threshold: 0.999")
     
     results = await kg_pipeline.run_async(
         df=df,
@@ -182,7 +178,6 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     )
 
     print(f"Processed {len(results)} documents successfully.")
-    print("Knowledge graph construction completed with enhanced SpaCy resolver.")
     return results
 
 # Asyncio event loop to run the main function in a script
@@ -209,20 +204,8 @@ if __name__ == "__main__":
             print(f"Data directory not found: {data_dir}")
         sys.exit(0)
     
-    print("Starting Factal Knowledge Graph Construction with Enhanced SpaCy Entity Resolution")
-    print("=" * 80)
-    
     # Run the main function with arguments
     results = asyncio.run(main(
         data_file_pattern=args.file_country,
         sample_size=args.sample_size
     ))
-    
-    print("=" * 80)
-    if results:
-        print(f"✅ SUCCESS: Processed {len(results)} documents.")
-        print("Knowledge graph created with enhanced SpaCy resolver.")
-        print("Using higher similarity threshold to reduce inappropriate merges.")
-    else:
-        print("❌ FAILED: No documents were processed.")
-    print("=" * 80)

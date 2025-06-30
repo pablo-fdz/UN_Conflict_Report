@@ -29,7 +29,7 @@ Usage Examples:
 
 RECENT CHANGES:
 - Implemented enhanced SpaCy resolver with higher similarity threshold
-- Added ACLEDKGPipeline class that overrides the standard resolver
+- Added StrictKGPipeline class that overrides the standard resolver
 - Simplified approach for better stability and reliability
 
 Author: Generated for UN Conflict Report project
@@ -60,7 +60,7 @@ except ImportError as e:
     print("Make sure you're running this script from the correct directory")
     sys.exit(1)
 
-class ACLEDKGPipeline(KGConstructionPipeline):
+class StrictKGPipeline(KGConstructionPipeline):
     """
     Custom KG Construction Pipeline for ACLED data that uses SpaCy resolver
     with higher similarity threshold to reduce inappropriate geographic merging.
@@ -139,7 +139,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
         # Apply sampling if specified
         if sample_size:
             original_size = len(df)
-            df = df.tail(sample_size)
+            df = df.sample(sample_size)
             print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
         
         # Convert date column to string format for metadata
@@ -147,8 +147,6 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
             df = df.with_columns([
                 pl.col('date').dt.strftime('%Y-%m-%d').alias('date')
             ])
-        
-        print(f"Loaded {len(df)} rows from ACLED data")
     
     except Exception as e:
         print(f"Error loading ACLED data: {e}")
@@ -158,7 +156,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
 
     # Initialize the custom ACLED KG construction pipeline 
     # This uses enhanced SpaCy resolver with higher similarity threshold
-    kg_pipeline = ACLEDKGPipeline()
+    kg_pipeline = StrictKGPipeline()
 
     # Define metadata mapping for ACLED data (document properties additional 
     # to base field to dataframe columns)
@@ -169,9 +167,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     }
 
     # Run the KG pipeline with the loaded data
-    print("Starting Knowledge Graph construction with enhanced SpaCy resolver...")
-    print("Using higher similarity threshold (0.999) to reduce inappropriate merging")
-    print("This approach better handles geographically distinct entities")
+    print("Using SpaCySemanticMatchResolver with similarity threshold: 0.999")
     
     results = await kg_pipeline.run_async(
         df=df,
@@ -182,7 +178,6 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     )
 
     print(f"Processed {len(results)} documents successfully.")
-    print("Knowledge graph construction completed with enhanced SpaCy resolver.")
     return results
 
 # Asyncio event loop to run the main function in a script
@@ -209,20 +204,8 @@ if __name__ == "__main__":
             print(f"Data directory not found: {data_dir}")
         sys.exit(0)
     
-    print("Starting ACLED Knowledge Graph Construction with Enhanced SpaCy Entity Resolution")
-    print("=" * 80)
-    
     # Run the main function with arguments
     results = asyncio.run(main(
         data_file_pattern=args.file_country,
         sample_size=args.sample_size
     ))
-    
-    print("=" * 80)
-    if results:
-        print(f"✅ SUCCESS: Processed {len(results)} documents.")
-        print("Knowledge graph created with enhanced SpaCy resolver.")
-        print("Using higher similarity threshold to reduce inappropriate merges.")
-    else:
-        print("❌ FAILED: No documents were processed.")
-    print("=" * 80)
