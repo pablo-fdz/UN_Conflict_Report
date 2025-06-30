@@ -1,0 +1,680 @@
+# Configuration Files Guide
+
+This guide provides a detailed explanation of each configuration file used in the pipeline. These files allow you to customize the pipeline's behavior without modifying the source code.
+
+> **Important**: All of the values from the JSON configuration files can be adjusted. Nevertheless, **the keys should not be modified under any circumstance**, as the pipeline code expects the existence of some keys with particular names.
+
+## `data_ingestion_config.json`
+
+This file controls which data sources are ingested and used for building the knowledge graph.
+
+### acled
+
+Configuration for the ACLED data source (structured, high-quality data but with limited perspectives).
+
+#### *ingestion*
+
+`true` to download and process data from this source, `false` to skip it. 
+
+*Trade-offs*: 
+- Advantages: Ingesting more sources provides a richer knowledge base.
+- Disadvantages: Ingesting more sources increases processing time and storage requirements.
+
+*Recommended value*: if storage constraints are not an issue, set to `true`.
+
+#### *include_in_kg*
+
+`true` to use the ingested data from this source during the knowledge graph building phase. 
+
+*Trade-offs*: 
+
+- Advantages: Including more data in the KG can improve the comprehensiveness of reports.
+- Disadvantages: including more data increases the complexity and cost of KG construction and querying.
+
+*Recommended value*: if Neo4j storage constraints are not an issue, set to `true` to improve the richness of the knowledge graph.
+
+### factal
+
+Configuration for the Factal data source (high-quality event compilation, but with limited perspectives).
+
+#### *ingestion* 
+
+Same as for ACLED data source.
+
+#### *include_in_kg* 
+
+Same as for ACLED data source.
+
+### google_news
+
+Configuration for the Google News data source (highly unstructured data, potentially less trustworthy, but rich in diversity).
+
+#### *ingestion* 
+
+Same as for ACLED data source.
+
+#### *include_in_kg* 
+
+Same as for ACLED data source.
+
+### Most Impactful Parameters
+
+The `ingestion` and `include_in_kg` flags for each data source are the key parameters here. They directly determine the scope and content of your knowledge graph.
+
+## `kg_building_config.json`
+
+This file configures every aspect of the knowledge graph construction process, including **text processing**, **named entity recognition** (NER) and **entity resolution**.
+
+### text_splitter_config
+
+Defines how input documents are divided into smaller chunks for embedding and doing named entity recognition on the resulting chunks.
+
+#### *chunk_size*
+
+The maximum number of characters (*not* tokens - tokens can be assimilated to a word) for each text chunk. 
+
+*Trade-offs*: 
+- Larger chunks provide more context to the LLM can be less precise (due to positional bias) for embedding, named entity recognition and retrieval. 
+- Smaller chunks require doing more LLM requests (which could increase the bill if pricing is based on the number of requests) and more focused but may lose important context that spans across chunks. 
+- Consider also the embedder and LLM (for NER) context window for setting this parameter (common embedders have between 256 to 512 tokens of context window, while modern LLMs have more than 1M tokens of context window). The number of characters of regular news articles can span between 5,000-20,000 characters.
+
+*Recommended value*: set a value high enough so that the whole input text can be included in a text chunk (e.g., 1M characters). Since input texts are relatively short (at most, long news articles), positional bias is not really an issue here, and embeddings can capture most of the meaning of an article with just the first few hundred tokens. If you want to split articles into more than one chunk, set a relatively low value (at most 5,000 characters).
+
+#### *chunk_overlap*
+
+The number of characters from the previous chunk to overlap with each chunk. Must be less than `chunk_size`. 
+
+*Trade-offs*: Higher overlap helps preserve context across chunk boundaries but increases the total amount of data to process and store.
+
+*Recommended value*: if `chunk_size` is large enough, this parameter will not have any impact. On the other hand, if `chunk_size` is low, consider setting this parameter to 10% of the chunk size to preserve context.
+
+### embedder_config
+
+Specifies the model used to create numerical representations (embeddings) of text chunks.
+
+#### *model_name*
+
+The name of the SentenceTransformer model to use. 
+
+*Trade-offs*: There's a balance between model quality, speed, context window size and the LLM's processing cost.
+- Splitting articles increases the number of calls to the entity extraction LLM, which can be costly and hit rate limits.
+- Embedding models like `all-MiniLM-L6-v2` have small context windows (e.g., 256 tokens), which may require splitting a single news article into multiple chunks to consider the whole input text for embedding.
+- While the most important information in news is often at the beginning, larger context windows can capture more nuance. Consider these [`SentenceTransformer` models](https://www.sbert.net/docs/sentence_transformer/pretrained_models.html#original-models), all of which work out of the box within the pipeline:
+    - `all-mpnet-base-v2`: Best quality, 384 token limit.
+    - `all-distilroberta-v1`: Faster, 512 token limit.
+    - `all-MiniLM-L6-v2`: Fastest, good quality, 256 token limit.
+- To capture the whole input text for embedding with large text chunks, an alternative is Google's `text-embedding-004`, which is free (with rate limits) and supports up to 2,048 tokens. In that case, however, compatibility is not guaranteed.
+
+*Recommended value*: use `all-MiniLM-L6-v2`. Performance is very fast, quality is comparable to those of the best embedding models and the 256 token context window is more than enough to capture the main meaning of a news article.
+
+### llm_config
+
+Configures the Large Language Model used for extracting entities and relationships (edges) from the text chunks.
+
+#### *model_name*
+
+The identifier for the LLM (e.g., `gemini-2.5-flash`). The pipeline works out-of-the-box with [Google Gemini models](https://ai.google.dev/gemini-api/docs/models) (as they are of high quality and their API has a [free tier](https://ai.google.dev/gemini-api/docs/rate-limits#free-tier)), but the code could be easily adjusted to work with other providers.
+
+*Trade-offs*: 
+- More powerful models may yield more accurate extractions but are slower and more expensive. 
+- Lighter models are faster and cheaper but might miss nuances.
+
+*Recommended value*: consider choosing a high-quality model for this step (e.g., `gemini-2.5-flash` on June 2025), as the quality of the entity extraction will have a large impact across the whole pipeline. Furthermore, structured output is needed at this step, which is more ensured with high-quality models.
+
+#### *model_params*
+
+Parameters to control the LLM's behavior, like `temperature`. A `temperature` of `0.0` makes the output more deterministic and is recommended for extraction tasks.
+
+The parameters must be included in a dictionary-like structure:
+
+```json
+"model_params": {
+    "temperature": 0.0,
+    "response_mime_type": "application/json",
+    "max_output_tokens": 1000
+}
+```
+
+All of the available parameters can be found [here](https://googleapis.github.io/python-genai/genai.html#genai.types.GenerateContentConfig), and an explanation of the most common parameters can be found [here](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/content-generation-parameters).
+
+*Recommended values*: at least set the `temperature` to a low value for more deterministic results and set `response_mime_type` to `"application/json"`, as the outputs of the LLM for entity extraction will be needed to be in JSON format in order to populate the neo4j graph database. More information about structured outputs with Google Gemini can be found [here](https://ai.google.dev/gemini-api/docs/structured-output) (note that in this case it is not possible to pass a schema).
+
+#### *max_requests_per_minute*
+
+Rate limit to avoid exceeding API quotas. 
+
+*Recommended value*: set to the real rate limit for the corresponding model (check this [link](https://ai.google.dev/gemini-api/docs/rate-limits#current-rate-limits) for the Google Gemini rate limits), as the code already implements some safety checks to avoid exceeding the maximum requests per minute and includes retry logic when requests fail.
+
+> Check the usage of Gemini models in [Google AI Studio](https://aistudio.google.com/usage) if generation fails.
+
+### schema_config
+
+Defines the structure (nodes, edges, properties) of the knowledge graph.
+
+#### *create_schema*
+
+If `true`, the pipeline will attempt to create the defined schema in the Neo4j database. If `false`, the LLM will structure the knowledge graph based on its own criteria.
+
+*Trade-offs*:
+- If set to `true`, the structure of the knowledge graph is more deterministic and organized.
+- If set to `false`, flexibility increases but the graph can become highly unorganized, with the LLM potentially creating new node and edge types each time it is called to do NER.
+
+*Recommended value*: set to `true` and suggest a schema (see below). 
+
+#### *suggest_pattern*
+
+If set to `true`, the triplets will also be suggested when creating the graph from the schema. If `create_schema` is set to `false`, setting `suggest_pattern` to `true` will not have any effect.
+
+*Trade-offs*:
+- If `true`, the graph will be even more deterministic, with the relationships between the pre-defined entities already established.
+- If `false`, flexibility will improve, but the LLM may come up with triplets which do not make sense.
+
+*Recommended value*: set to `true` and suggest triplets (see below). 
+
+#### *nodes*, *edges*, *triplets*
+
+These arrays define the allowed entity types, relationship types, and the valid connections between them. This is the blueprint for your graph. 
+
+*Trade-offs*:
+- A more detailed schema can capture more specific information but makes the extraction task harder for the LLM. 
+- A simpler schema is easier to populate but may be less expressive.
+
+`nodes`, `edges` and `triplets` need to have the following structure:
+
+```json
+{
+    "schema_config": {
+        "nodes": [
+            {"label": "Event", "description": "...", "properties": [
+                {"name": "name", "type": "STRING", "description": "..."},
+                {"name": "date", "type": "DATE"}
+            ]},
+            ...
+        ],
+        "edges": [
+            {"label": "OCCURRED_IN", "description": "...", "properties": [
+                {"name": "start_date", "type": "DATE"}
+            ]},
+            ...
+        ],
+        "triplets": [
+            ["Event", "OCCURRED_IN", "Country"],
+            ...
+        ]
+    }
+}
+```
+Possible property types are: `BOOLEAN`, `DATE`, `DURATION`, `FLOAT`, `INTEGER`, `LIST`, `LOCAL DATETIME`, `LOCAL TIME`, `POINT`, `STRING`, `ZONED DATETIME`, and `ZONED TIME` (source: [neo4j](https://neo4j.com/docs/cypher-manual/current/values-and-types/property-structural-constructed/)).
+
+*Suggested schema*:
+
+```json
+"nodes": [
+    {"label": "Event", 
+    "description": "Significant occurrences of the input text, such as conflicts, elections, coups, attacks or any other relevant information.",
+    "properties": [
+        {"name": "name", "type": "STRING"},
+        {"name": "start_date", "type": "DATE", "description": "Date when the event started or when the information was first reported."},
+        {"name": "end_date", "type": "DATE", "description": "Date when the event ended or when the information was last updated."},
+        {"name": "type", "type": "STRING", "description": "Type of event, e.g., Conflict, Attack, Election."}
+    ]},
+    
+    {"label": "Actor", 
+    "description": "All kinds of entities mentioned, such as terrorist groups, political parties, military, individuals, etc.",
+    "properties": [
+        {"name": "name", "type": "STRING"},
+        {"name": "type", "type": "STRING", "description": "Type of actor, e.g., civilian, military, government, international organization, etc."}
+    ]},
+    
+    {"label": "Country", 
+    "description": "Nation states mentioned in the story, like the United States, Sudan, Afghanistan, etc. Do not include in this category territories within countries.",
+    "properties": [
+        {"name": "name", "type": "STRING"}
+    ]},
+
+    {"label": "ADM1", 
+    "description": "First-level administrative division within countries, like US states (e.g., California), provinces in Iran (e.g., Semnan) or regions in Ghana (e.g., Ashanti).",
+    "properties": [
+        {"name": "name", "type": "STRING"}
+    ]},
+
+    {"label": "Location",
+    "description": "Particular geographical location of higher granularity than national (country) or first-level administrative divisions (ADM1), such as cities, towns, or specific sites (e.g., streets, buildings, squares, etc.)..",
+    "properties": [
+        {"name": "name", "type": "STRING"}
+    ]}
+    
+],
+"edges": [
+    {"label": "HAPPENED_IN", 
+    "description": "Indicates where (geographically) an event took place."},
+    
+    {"label": "CONFRONTED_WITH", 
+    "description": "Negative connection between actors/territories and other actors/territories, such as conflicts, attacks, simple criticism (without violence) or other forms of confrontation.",
+    "properties": [
+        {"name": "type", "type": "STRING", "description": "Type of confrontation, e.g., conflict, attack, criticism, trade war, etc."},
+        {"name": "start_date", "type": "DATE", "description": "Date when the confrontation started."},
+        {"name": "end_date", "type": "DATE", "description": "Date when the confrontation ended or was last reported."}
+    ]},
+    
+    {"label": "COOPERATED_WITH", 
+    "description": "Cooperative (positive) relationship between actors/territories and other actors/territories, such as alliances, partnerships, or other forms of cooperation.",
+    "properties": [
+        {"name": "type", "type": "STRING", "description": "Type of cooperation, e.g., alliance, partnership, trade agreement, etc."},
+        {"name": "start_date", "type": "DATE", "description": "Date when the cooperation started."},
+        {"name": "end_date", "type": "DATE", "description": "Date when the cooperation ended or was last reported."}
+    ]},
+
+    {"label": "PARTICIPATED_IN", 
+    "description": "Actor or country's involvement in an event",
+    "properties": [
+        {"name": "role", "type": "STRING", "description": "Role of the actor in the event, e.g., victim, perpetrator, participant, etc."}
+    ]},
+    
+    {"label": "IS_FROM", 
+    "description": "Physical location of actors within countries, first-level territorial divisions or locations",
+    "properties": [
+        {"name": "since", "type": "DATE", "description": "Date when the actor was first reported to be in this location."},
+        {"name": "until", "type": "DATE", "description": "Date when the actor was last reported to be in this location."}
+    ]},
+    
+    {"label": "IS_WITHIN",
+    "description": "Indicates that a geographical location is part of a larger geographical entity, such as a city being within a country, a first-level territorial division being within a country or a building being within a city.",
+    "properties": [
+        {"name": "since", "type": "DATE", "description": "Date when the location was first reported to be within the larger geographical entity."},
+        {"name": "until", "type": "DATE", "description": "Date when the location was last reported to be within the larger geographical entity."}
+    ]}
+],
+"triplets": [
+
+    ["Event", "HAPPENED_IN", "Location"],
+    ["Event", "HAPPENED_IN", "ADM1"],
+    ["Event", "HAPPENED_IN", "Country"],
+
+    ["Actor", "CONFRONTED_WITH", "Actor"],
+    ["Actor", "CONFRONTED_WITH", "Country"],
+    ["Actor", "CONFRONTED_WITH", "ADM1"],
+    ["Actor", "CONFRONTED_WITH", "Location"],
+    ["Country", "CONFRONTED_WITH", "Actor"],
+    ["Country", "CONFRONTED_WITH", "Country"],
+    ["Country", "CONFRONTED_WITH", "ADM1"],
+    ["Country", "CONFRONTED_WITH", "Location"],
+    ["ADM1", "CONFRONTED_WITH", "Actor"],
+    ["ADM1", "CONFRONTED_WITH", "Country"],
+    ["ADM1", "CONFRONTED_WITH", "ADM1"],
+    ["ADM1", "CONFRONTED_WITH", "Location"],
+    ["Location", "CONFRONTED_WITH", "Actor"],
+    ["Location", "CONFRONTED_WITH", "Country"],
+    ["Location", "CONFRONTED_WITH", "ADM1"],
+    ["Location", "CONFRONTED_WITH", "Location"],
+
+    ["Actor", "COOPERATED_WITH", "Actor"],
+    ["Actor", "COOPERATED_WITH", "Country"],
+    ["Actor", "COOPERATED_WITH", "ADM1"],
+    ["Actor", "COOPERATED_WITH", "Location"],
+    ["Country", "COOPERATED_WITH", "Actor"],
+    ["Country", "COOPERATED_WITH", "Country"],
+    ["Country", "COOPERATED_WITH", "ADM1"],
+    ["Country", "COOPERATED_WITH", "Location"],
+    ["ADM1", "COOPERATED_WITH", "Actor"],
+    ["ADM1", "COOPERATED_WITH", "Country"],
+    ["ADM1", "COOPERATED_WITH", "ADM1"],
+    ["ADM1", "COOPERATED_WITH", "Location"],
+    ["Location", "COOPERATED_WITH", "Actor"],
+    ["Location", "COOPERATED_WITH", "Country"],
+    ["Location", "COOPERATED_WITH", "ADM1"],
+    ["Location", "COOPERATED_WITH", "Location"],
+    
+    ["Actor", "PARTICIPATED_IN", "Event"],
+    ["Country", "PARTICIPATED_IN", "Event"],
+    ["ADM1", "PARTICIPATED_IN", "Event"],
+
+    ["Actor", "IS_FROM", "Country"],
+    ["Actor", "IS_FROM", "ADM1"],
+    ["Actor", "IS_FROM", "Location"],
+
+    ["ADM1", "IS_WITHIN", "Country"],
+    ["Location", "IS_WITHIN", "Country"],
+    ["Location", "IS_WITHIN", "ADM1"],
+    ["Location", "IS_WITHIN", "Location"]
+]
+```
+
+#### *enforce_schema*
+
+Whether to enforce and validate the resulting schema resulting from the LLM extraction (`"STRICT"`) or not (`"NONE"`).
+
+*Recommended values*: set to `"NONE"` for improved robustness of the pipeline while consistently structuring the graph with a schema. 
+
+### prompt_template_config
+
+Configures the prompt used to instruct the LLM on how to extract information.
+
+#### *use_default*
+
+If `true`, it uses the default prompt from the `neo4j-graphrag` library. If `false`, it uses the custom `template` provided.
+
+*Recommended value*: set to `false` and define a custom extraction `template` more optimized towards entity extraction for this use case (relevant security events in countries/regions).
+
+#### *template*
+
+A custom prompt template. This gives you fine-grained control over the LLM's extraction behavior.
+
+*Suggested template*:
+```
+"You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph that will be used for creating security reports for different countries.\n\nExtract the entities (nodes) and specify their type from the following Input text.\nAlso extract the relationships between these nodes. The relationship direction goes from the start node to the end node.\n\nReturn result as JSON using the following format:\n{{\"nodes\": [ {{\"id\": \"0\", \"label\": \"the type of entity\", \"properties\": {{\"name\": \"name of entity\" }} }}],\n\"relationships\": [{{\"type\": \"TYPE_OF_RELATIONSHIP\", \"start_node_id\": \"0\", \"end_node_id\": \"1\", \"properties\": {{\"details\": \"Description of the relationship\"}} }}] }}\n\n- Use only the information from the Input text. Do not add any additional information.\n- If the input text is empty, return empty Json.\n- Make sure to create as many nodes and relationships as needed to offer rich context for generating a security-related knowledge graph.\n- An AI knowledge assistant must be able to read this graph and immediately understand the context to inform detailed research questions.\n- Multiple documents will be ingested from different sources and we are using this property graph to connect information, so make sure entity types are fairly general.\n- Do not create edges between nodes and chunks when the relationship is not clear enough.\n\nUse only the following nodes and relationships (if provided):\n{schema}\n\nAssign a unique ID (string) to each node, and reuse it to define relationships.\nDo respect the source and target node types for relationship and the relationship direction.\n\nDo not return any additional information other than the JSON in it.\n\nExamples:\n{examples}\n\nInput text:\n{text}"
+```
+
+> *Warning*: do NOT modify the information in the prompt that guides the LLM on how to structure the output. This information is essential for avoiding errors when populating the knowledge graph with the extracted entities and relationships.
+
+### examples_config
+
+#### *pass_examples*
+
+Whether to do few-shot learning with the LLM for extracting the entities and structuring the output to populate the knowledge graph.
+
+*Recommended value*: `false`, high-quality LLMs already do a good job even without examples. Passing examples will increase the input tokens and potentially increase LLM billing.
+
+#### *examples*
+
+Examples that will be passed to the LLM (as strings) as a model for extracting entities and configuring the JSON documents that should be used to populate the neo4j knowledge graph. These examples will only be passed if `pass_examples` is set to `true`.
+
+*Suggested examples*: 
+```json
+"examples": [
+    {
+        "input_text": "Text: On January 1, 2023, a significant conflict erupted in the Middle East involving multiple countries and organizations. The conflict, named 'Middle East Conflict 2023', lasted until March 15, 2023. Key actors included the 'Middle East Coalition' and the 'Opposing Forces'. The conflict resulted in a high level of destruction and instability in the region.",
+        "schema": {
+            "nodes": [
+                {"id": "0", "label": "Event", "properties": {"name": "Middle East Conflict 2023", "date": "2023-01-01", "end_date": "2023-03-15", "type": "Conflict", "severity": 5, "description": "A significant conflict in the Middle East."}},
+                {"id": "1", "label": "Actor", "properties": {"name": "Middle East Coalition", "type": "Organization"}},
+                {"id": "2", "label": "Actor", "properties": {"name": "Opposing Forces", "type": "Organization"}},
+                {"id": "3", "label": "Region", "properties": {"name": "Middle East", "stability": 0.2}}
+            ],
+            "relationships": [
+                {"type": "OCCURRED_IN", "start_node_id": "0", "end_node_id": "3", "properties": {"start_date": null, "end_date": null, "certainty": 1.0}},
+                {"type": "PARTICIPATED_IN", "start_node_id": "1", "end_node_id": "0", "properties": {"role": null, "significance": 1.0, "start_date": null, "end_date": null}},
+                {"type": "PARTICIPATED_IN", "start_node_id": "2", "end_node_id": "0", "properties": {"role": null, "significance": 1.0, "start_date": null, "end_date": null}}
+            ]
+        }
+    },
+    {
+        "input_text": "Text: On February 14, 2023, ...",
+        "schema": {
+            "nodes": [
+                {"id": "0", "label": "Event", "properties": {"name": "February 14 Incident", "date": "2023-02-14", "end_date": null, "type": "Attack", "severity": 4, "description": "An attack occurred on February 14."}}
+            ]
+        }
+    }
+]
+```
+
+### entity_resolution_config
+
+Configures how the pipeline merges duplicate or similar entities. Nodes from the lexical graph (text chunks and document metadata) are *not* merged.
+
+#### *use_resolver*
+
+If `true`, enables the entity resolution step (if `resolver` is set to a valid resolver) and is performed automatically each time after the neo4j knowledge graph is populated. Relationships and properties of the merged nodes are integrated.
+
+*Trade-offs*:
+- Depending on the resolver that is used, entities with similar naming (but semantically different) may be merged.
+- Simplifies and reduces the size of the knowledge graph.
+
+*Recommended value*: set to `true`.
+
+> Note that the time needed for the resolver to resolve nodes increases exponentially as the size of the knowledge graph increases. This cost is even higher for more extensive resolvers like `SpaCySemanticMatchResolver`.
+
+#### *resolver* 
+
+The name of the resolver algorithm to use. Either `SinglePropertyExactMatchResolver`, `FuzzyMatchResolver` or `SpaCySemanticMatchResolver` are valid options. 
+
+*Recommended values*: `SpaCySemanticMatchResolver` is recommended for its ability to merge entities based on semantic meaning, which is more robust than exact string matching.
+
+More information about the available resolvers can be found [here](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html#entity-resolver).
+
+#### *SinglePropertyExactMatchResolver_config*
+
+Configuration for the `SinglePropertyExactMatchResolver`. This is a simple resolver that merges nodes with the same label and identical `resolve_property` property.
+
+*Parameters*:
+- `filter_query`: query that is going to be used to limit the resolver's resolution scope. Must be a Cypher WHERE clause.
+- `resolve_property`: the property that will be compared. If values match exactly, entities are merged.
+
+*Recommended values*:
+- `filter_query`: set to `null` (as this resolver is very fast and efficient, so the search can be in the whole KG).
+- `resolve_property`: set to `name` (nodes with the same value in the `name` property will be merged).
+
+#### *FuzzyMatchResolver_config*
+
+Similarity-based resolver that resolves entities with the same label and similar set of textual properties using RapidFuzz for fuzzy matching.
+
+*Parameters*:
+- `filter_query`: query that is going to be used to limit the resolver's resolution scope. Must be a Cypher WHERE clause.
+- `resolve_properties`: the list of properties that will be compared. The strings of all of these properties will be concatenated and then embedded. This embedding will be used to determine whether to merge nodes or not based on a `rapidfuzz`'s similarity method.
+- `similarity_threshold`: similarity threshold above which nodes are merged (default is 0.8). Higher threshold will result in less false positives, but may miss some matches.
+
+*Recommended values*:
+- `filter_query`: if feasible due to the KG size, set to `null`. Alternative: `"WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}"` to merge entities coming from the same document.
+- `resolve_properties`: `["name"]` (merge nodes only based on its name).
+- `similarity_threshold`: 0.95 (high value to reduce false positives, which are frequent).
+
+#### *SpaCySemanticMatchResolver_config*
+
+A semantic match resolver, which is based on spaCy embeddings and cosine similarities of embedding vectors. This resolver is ideal for higher quality KG resolution using static embeddings.
+
+*Parameters*:
+- `filter_query`: query that is going to be used to limit the resolver's resolution scope. Must be a Cypher WHERE clause.
+- - `spacy_model`: SpaCy model used to embed the `resolve_properties` (see available *monolingual English* models [here](https://spacy.io/models/en)).
+- `resolve_properties`: the list of properties that will be compared. The strings of all of these properties will be concatenated and then embedded. This embedding will be used to determine whether to merge nodes or not based on cosine similarity.
+- `similarity_threshold`: similarity threshold above which nodes are merged (default is 0.8). Higher threshold will result in less false positives, but may miss some matches.
+
+*Recommended values*:
+- `filter_query`: if feasible due to the KG size, set to `null`. Alternative: `"WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}"` to merge entities coming from the same document.
+- `spacy_model`: set to `en_core_web_lg` (largest, best model - the bottleneck here is not the resolver performance).
+- `resolve_properties`: `["name"]` (merge nodes only based on its name).
+- `similarity_threshold`: 0.95 (high value to reduce false positives, which are frequent).
+
+> Consider the language of the input documents for choosing the resolver method. SpaCy also has [multilingual embedding models](https://spacy.io/models/xx). In case of doubt, choose the most conservative option, `SinglePropertyExactMatchResolver`.
+
+#### *ex_post_resolver*
+
+The resolver to use in the optional ex-post resolution step. `SinglePropertyExactMatchResolver` is a fast and conservative choice for a final cleanup. Ex-post resolution can be called directly using `main.py` from the command line (see [`dev_guide.md`](dev_guide.md) for more information).
+
+### dev_settings
+
+Settings for development and debugging.
+
+#### *build_with_sample_data*
+
+If `true`, the pipeline will run with a small, predefined sample of data, which is useful for quick tests.
+
+*Recommended value*: set to `true` if working to improve the pipeline, set to `false` for production.
+
+#### *on_error*
+
+Error handling strategy for entity extraction (`"IGNORE"` for ignoring the error or `"RAISE"` for raising the error and stopping the procedure).
+
+*Recommended value*: set to `"RAISE"` if working to improve the pipeline, set to `"IGNORE"` for production.
+
+#### *batch_size*
+
+The number of nodes or relationships to write to the database in a batch.
+
+*Trade-offs*: Larger batches can be more efficient but consume more memory.
+
+*Recommended value*: 1000 (neo4j's default).
+
+#### *max_concurrency*
+
+Maximum number of concurrent LLM requests for entity extraction.
+
+*Recommended value*: set to 5 (default). However, if running into LLM requests rate limit issues, consider decreasing this value.
+
+### Most Impactful Parameters
+
+`schema_config` is the most critical parameter as it defines the fundamental structure of your knowledge graph. The `llm_config` and `prompt_template_config` are also highly impactful, as they directly control the quality of the information extracted from your documents. Finally, the choice of `resolver` in `entity_resolution_config` significantly affects the cleanliness and connectivity of the final graph.
+
+## `kg_retrieval_config.json`
+
+This file configures the various "retrievers" that can be used to fetch information from the knowledge graph to answer a query.
+
+-   **VectorRetriever**: Performs a simple similarity search on text chunk embeddings.
+    -   *enabled*: Set to `true` to use this retriever.
+-   **VectorCypherRetriever**: Augments the vector search by running a Cypher query to fetch additional connected data from the graph, providing richer context.
+    -   *enabled*: Set to `true` to use this retriever.
+    -   *retrieval_query*: The Cypher query to execute for each retrieved chunk to expand its context.
+-   **HybridRetriever**: Combines vector search (semantic) and full-text search (keyword).
+    -   *enabled*: Set to `true` to use this retriever.
+-   **HybridCypherRetriever**: The same as `HybridRetriever`, but with an additional Cypher query to expand context, similar to `VectorCypherRetriever`.
+    -   *enabled*: Set to `true` to use this retriever.
+-   **Text2CypherRetriever**: Translates a natural language question into a Cypher query using an LLM.
+    -   *enabled*: Set to `true` to use this retriever.
+    -   *llm_config*: The LLM configuration for the text-to-Cypher translation.
+
+### Most Impactful Parameters
+
+The `enabled` flag for each retriever determines which strategies are available. The choice of retriever has a massive impact on the quality of the context provided to the final generation LLM. `HybridCypherRetriever` is often a powerful choice as it combines keyword search, semantic search, and graph traversal, but the `retrieval_query` must be well-crafted.
+
+## `graphrag_config.json`
+
+This file configures the final step of the pipeline: generating the security report using the context fetched by a retriever.
+
+-   **llm_config**: The LLM used to synthesize the final report from the retrieved context.
+-   **rag_template_config**: The prompt template for the final report generation.
+    -   *system_instructions*: High-level instructions for the LLM on how to behave (e.g., "Answer only using the context provided").
+-   **search_text**: The initial, broad query used to kick off the retrieval process (e.g., "Security events in {country}").
+-   **query_text**: The detailed prompt given to the LLM to generate the final report, instructing it on structure, tone, and content.
+-   **examples**: Few-shot examples to guide the LLM's output format (currently empty).
+-   **return_context**: If `true`, the context used to generate the report will be saved alongside the report for debugging and verification.
+
+### Most Impactful Parameters
+
+`query_text` is the most important parameter here, as it directly instructs the LLM on what kind of report to generate. The `llm_config` also plays a key role in the quality and coherence of the final output.
+
+## `evaluation_config.json`
+
+This file configures the accuracy evaluation pipeline, which fact-checks the generated reports against the knowledge graph.
+
+-   **section_split**:
+    -   *split_pattern*: A regular expression used to split the generated report into sections for evaluation.
+-   **accuracy_evaluation**: Contains prompts and configurations for the evaluation steps.
+    -   *base_claims_prompt*: The prompt used to instruct an LLM to extract verifiable claims from a report section.
+    -   *base_questions_prompt*: The prompt used to generate questions to verify each claim.
+    -   *base_eval_prompt*: The prompt used to make a final judgment (true, false, mixture) on a claim based on the answers retrieved from the KG.
+    -   *llm_claims_config*, *llm_questions_config*, *llm_evaluator_config*: Separate LLM configurations for each step of the evaluation process (claim extraction, question generation, final evaluation).
+-   **retrievers**: Configures the retriever used during the evaluation phase to find answers to the verification questions in the knowledge graph. The structure is identical to `kg_retrieval_config.json`.
+-   **graphrag**: Configures the RAG process used to answer the verification questions.
+    -   *query_text*: The prompt used to ask the RAG pipeline to answer the verification questions for a given claim.
+
+### Most Impactful Parameters
+
+The three base prompts (`base_claims_prompt`, `base_questions_prompt`, `base_eval_prompt`) are crucial as they define the logic of the entire evaluation. The quality of the evaluation depends heavily on how well these prompts guide the LLMs to perform their specific tasks. The choice of `retrievers` is also critical for finding the correct evidence in the graph.<!-- filepath: /media/pablo/Shared files/GDrive personal/BSE - DSDM/3-Master_Thesis/UN_Conflict_Report/graphrag_pipeline/docs/config_files_guide.md -->
+# Configuration Files Guide
+
+This guide provides a detailed explanation of each configuration file used in the pipeline. These files allow you to customize the pipeline's behavior without modifying the source code. Remember, you can change the *values* in these JSON files, but the *keys* should not be altered as the pipeline code depends on them.
+
+## `data_ingestion_config.json`
+
+This file controls which data sources are ingested and used for building the knowledge graph.
+
+-   **acled**: Configuration for the ACLED data source.
+    -   *ingestion*: `true` to download and process data from this source, `false` to skip it. Trade-offs: Ingesting more sources provides a richer knowledge base but increases processing time and storage requirements.
+    -   *include_in_kg*: `true` to use the ingested data from this source during the knowledge graph building phase. Trade-offs: Including more data in the KG can improve the comprehensiveness of reports but also increases the complexity and cost of KG construction and querying.
+-   **factal**: Configuration for the Factal data source.
+    -   *ingestion*: Same as above.
+    -   *include_in_kg*: Same as above.
+-   **google_news**: Configuration for the Google News data source.
+    -   *ingestion*: Same as above.
+    -   *include_in_kg*: Same as above.
+
+### Most Impactful Parameters
+
+The `ingestion` and `include_in_kg` flags for each data source are the key parameters here. They directly determine the scope and content of your knowledge graph.
+
+## `kg_building_config.json`
+
+This file configures every aspect of the knowledge graph construction process, from text processing to entity resolution.
+
+-   **text_splitter_config**: Defines how input documents are divided into smaller chunks.
+    -   *chunk_size*: The maximum number of characters for each text chunk. Trade-offs: Larger chunks provide more context to the LLM but are more expensive to process and can be less precise for retrieval. Smaller chunks are cheaper and more focused but may lose important context that spans across chunks.
+    -   *chunk_overlap*: The number of characters that overlap between consecutive chunks. Trade-offs: Higher overlap helps preserve context across chunk boundaries but increases the total amount of data to process and store.
+-   **embedder_config**: Specifies the model used to create numerical representations (embeddings) of text chunks.
+    -   *model_name*: The name of the SentenceTransformer model to use. Trade-offs: There's a balance between model quality, speed, and context window size. For example, `all-mpnet-base-v2` offers high quality but has a smaller context window, while `all-MiniLM-L6-v2` is faster with a smaller memory footprint.
+-   **llm_config**: Configures the Large Language Model used for extracting entities and relationships.
+    -   *model_name*: The identifier for the LLM (e.g., `gemini-2.5-flash`). Trade-offs: More powerful models may yield more accurate extractions but are slower and more expensive. Lighter models are faster and cheaper but might miss nuances.
+    -   *model_params*: Parameters to control the LLM's behavior, like `temperature`. A `temperature` of `0.0` makes the output deterministic and is recommended for extraction tasks.
+    -   *max_requests_per_minute*: Rate limit to avoid exceeding API quotas. Trade-offs: A higher value speeds up processing but risks hitting API rate limits. A lower value is safer but slower.
+-   **schema_config**: Defines the structure (nodes, edges, properties) of the knowledge graph.
+    -   *create_schema*: If `true`, the pipeline will attempt to create the defined schema in the Neo4j database.
+    -   *nodes*, *edges*, *triplets*: These arrays define the allowed entity types, relationship types, and the valid connections between them. This is the blueprint for your graph. Trade-offs: A more detailed schema can capture more specific information but makes the extraction task harder for the LLM. A simpler schema is easier to populate but may be less expressive.
+-   **prompt_template_config**: Configures the prompt used to instruct the LLM on how to extract information.
+    -   *use_default*: If `true`, it uses the default prompt from the `neo4j-graphrag` library. If `false`, it uses the custom `template` provided.
+    -   *template*: A custom prompt template. This gives you fine-grained control over the LLM's extraction behavior.
+-   **entity_resolution_config**: Configures how the pipeline merges duplicate or similar entities.
+    -   *use_resolver*: If `true`, enables the entity resolution step.
+    -   *resolver*: The name of the resolver algorithm to use. `SpaCySemanticMatchResolver` is recommended for its ability to merge entities based on semantic meaning, which is more robust than exact string matching.
+    -   *ex_post_resolver*: The resolver to use in the optional ex-post resolution step. `SinglePropertyExactMatchResolver` is a fast and conservative choice for a final cleanup.
+-   **dev_settings**: Settings for development and debugging.
+    -   *build_with_sample_data*: If `true`, the pipeline will run with a small, predefined sample of data, which is useful for quick tests.
+    -   *batch_size*: The number of chunks to process in a single batch. Trade-offs: Larger batches can be more efficient but consume more memory.
+
+### Most Impactful Parameters
+
+`schema_config` is the most critical parameter as it defines the fundamental structure of your knowledge graph. The `llm_config` and `prompt_template_config` are also highly impactful, as they directly control the quality of the information extracted from your documents. Finally, the choice of `resolver` in `entity_resolution_config` significantly affects the cleanliness and connectivity of your final graph.
+
+## `kg_retrieval_config.json`
+
+This file configures the various "retrievers" that can be used to fetch information from the knowledge graph to answer a query.
+
+-   **VectorRetriever**: Performs a simple similarity search on text chunk embeddings.
+    -   *enabled*: Set to `true` to use this retriever.
+-   **VectorCypherRetriever**: Augments the vector search by running a Cypher query to fetch additional connected data from the graph, providing richer context.
+    -   *enabled*: Set to `true` to use this retriever.
+    -   *retrieval_query*: The Cypher query to execute for each retrieved chunk to expand its context.
+-   **HybridRetriever**: Combines vector search (semantic) and full-text search (keyword).
+    -   *enabled*: Set to `true` to use this retriever.
+-   **HybridCypherRetriever**: The same as `HybridRetriever`, but with an additional Cypher query to expand context, similar to `VectorCypherRetriever`.
+    -   *enabled*: Set to `true` to use this retriever.
+-   **Text2CypherRetriever**: Translates a natural language question into a Cypher query using an LLM.
+    -   *enabled*: Set to `true` to use this retriever.
+    -   *llm_config*: The LLM configuration for the text-to-Cypher translation.
+
+### Most Impactful Parameters
+
+The `enabled` flag for each retriever determines which strategies are available. The choice of retriever has a massive impact on the quality of the context provided to the final generation LLM. `HybridCypherRetriever` is often a powerful choice as it combines keyword search, semantic search, and graph traversal, but the `retrieval_query` must be well-crafted.
+
+## `graphrag_config.json`
+
+This file configures the final step of the pipeline: generating the security report using the context fetched by a retriever.
+
+-   **llm_config**: The LLM used to synthesize the final report from the retrieved context.
+-   **rag_template_config**: The prompt template for the final report generation.
+    -   *system_instructions*: High-level instructions for the LLM on how to behave (e.g., "Answer only using the context provided").
+-   **search_text**: The initial, broad query used to kick off the retrieval process (e.g., "Security events in {country}").
+-   **query_text**: The detailed prompt given to the LLM to generate the final report, instructing it on structure, tone, and content.
+-   **examples**: Few-shot examples to guide the LLM's output format (currently empty).
+-   **return_context**: If `true`, the context used to generate the report will be saved alongside the report for debugging and verification.
+
+### Most Impactful Parameters
+
+`query_text` is the most important parameter here, as it directly instructs the LLM on what kind of report to generate. The `llm_config` also plays a key role in the quality and coherence of the final output.
+
+## `evaluation_config.json`
+
+This file configures the accuracy evaluation pipeline, which fact-checks the generated reports against the knowledge graph.
+
+-   **section_split**:
+    -   *split_pattern*: A regular expression used to split the generated report into sections for evaluation.
+-   **accuracy_evaluation**: Contains prompts and configurations for the evaluation steps.
+    -   *base_claims_prompt*: The prompt used to instruct an LLM to extract verifiable claims from a report section.
+    -   *base_questions_prompt*: The prompt used to generate questions to verify each claim.
+    -   *base_eval_prompt*: The prompt used to make a final judgment (true, false, mixture) on a claim based on the answers retrieved from the KG.
+    -   *llm_claims_config*, *llm_questions_config*, *llm_evaluator_config*: Separate LLM configurations for each step of the evaluation process (claim extraction, question generation, final evaluation).
+-   **retrievers**: Configures the retriever used during the evaluation phase to find answers to the verification questions in the knowledge graph. The structure is identical to `kg_retrieval_config.json`.
+-   **graphrag**: Configures the RAG process used to answer the verification questions.
+    -   *query_text*: The prompt used to ask the RAG pipeline to answer the verification questions for a given claim.
+
+### Most Impactful Parameters
+
+The three base prompts (`base_claims_prompt`, `base_questions_prompt`, `base_eval_prompt`) are crucial as they define the logic of the entire evaluation. The quality of the evaluation depends heavily on how well these prompts guide the LLMs to perform their specific tasks. The choice of `retrievers` is also critical for finding the correct evidence in the
