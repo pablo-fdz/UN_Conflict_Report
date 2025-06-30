@@ -107,6 +107,8 @@ The name of the SentenceTransformer model to use.
 
 *Recommended value*: use `all-MiniLM-L6-v2`. Performance is very fast, quality is comparable to those of the best embedding models and the 256 token context window is more than enough to capture the main meaning of a news article.
 
+> Note that this same embedder will also be used (for consistency and ensuring comparability) at the graph retrieval step (see [`graphrag_config.json`](#graphrag_configjson)), for embedding the search query (`search_text`); but also at the accuracy evaluation step (see [`evaluation_config.json`](#evaluation_configjson)) for embedding the search query of fact-checking. Therefore, make sure that the context window of the chosen embedder covers the length of both of these search queries.
+
 ### llm_config
 
 Configures the Large Language Model used for extracting entities and relationships (edges) from the text chunks.
@@ -751,64 +753,142 @@ If `true`, the context used to generate the report will be saved alongside the r
 
 ## `evaluation_config.json`
 
-This file configures the accuracy evaluation pipeline, which fact-checks the generated reports against the knowledge graph.
+This file configures the accuracy evaluation pipeline, which fact-checks the generated reports against the content included in the knowledge graph.
 
 ### section_split
 
 #### *split_pattern*
+
 A regular expression used to split the generated report into individual sections for evaluation.
 
-*Recommended value*: The default `"(?m)^## (.+?)\\s*\\n(.*?)(?=^## |\\Z)"` is designed to split a markdown report by its level-2 headings (`##`). This is suitable for the report structure defined in `graphrag_config.json`.
+*Recommended value*: the default `"(?m)^## (.+?)\\s*\\n(.*?)(?=^## |\\Z)"` is designed to split a markdown report by its level-2 headings (`##`).
 
 ### accuracy_evaluation
 
-Contains prompts and configurations for the multi-step evaluation process.
+Contains prompts and configurations for the multi-step evaluation process. 
 
 #### *base_claims_prompt*
-The prompt used to instruct an LLM to extract verifiable, atomic claims from a report section.
 
-*Recommended value*: The provided prompt is heavily engineered with examples and notes to guide the LLM in extracting high-quality, self-contained claims. It is recommended to use it as is.
+The prompt used to instruct an LLM to extract verifiable, atomic claims from a report section. The placeholder `{section_text}` is needed inside the prompt for the accuracy evaluation pipeline to work properly.
+
+*Recommended value*: pass a heavily engineered prompt with examples and notes to guide the LLM in extracting high-quality, self-contained claims. It is recommended to use it as is.
+
+*Suggested prompt*:
+
+```json
+"You are an AI tasked with extracting verifiable claims from a section of a report. A verifiable claim is an atomic statement that can be checked for accuracy and is relevant to the topic of the report. Here is an example:\nSection: \"The constant attacks of Group A and Group B on civilians in Country X have led to a high number of casualties as well as internally displaced persons (IDPs). In May 2025, there have been more IDPs than any other month that year.\"\n\nFrom this section, you can extract the following verifiable claims:\n1. \"Group A has been carrying constant attacks on civilians in Country X.\"\n2. \"Group B has been carrying constant attacks on civilians in Country X.\"\n3. \"In May 2025, there have been more IDPs than in any of the previous months of 2025.\"\n\nNotes on this:\n- Claims 1 and 2 have to be separate claims, because they refer to different groups, so one could be true while the other is false and that would make the first sentence incorrect.\n- The claim in the original section about a \"high number of casualties\" is not verifiable, because it is not quantifiable/specific. We do not know what \"high\" means and we do not have a reference to compare it too. Claims that are subjective or vague should not be extracted.\n- It is important that you always make all the necessary information explicit in the claims, without pronouns or terms that make references to previous sentences, so that each claim is self-contained and can be verified independently.\n- Also, when abbreviations of any kind are used, always include, if you know it with certainty, the full name/term plus the abbreviation in parentheses.\n\nYou must extract all verifiable claims from the following section of a report:\nSection: \"{section_text}\""
+```
+
+> Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
 
 #### *base_questions_prompt*
-The prompt used to generate specific, answerable questions to verify each extracted claim.
 
-*Recommended value*: The default prompt is effective. It instructs the LLM to act as a journalist and create clear, concise questions.
+The prompt used to generate specific, answerable questions to verify each extracted claim. The placeholder `{claims_list}` is needed inside the prompt. 
+
+*Recommended value*: pass a prompt that instructs the LLM to act as a journalist and create clear, concise questions.
+
+*Suggested prompt*:
+
+```json
+"You are a journalist tasked with evaluating the accuracy of a set of claims against a knowledge base.\nFor the given list of claims below, you must generate 1 to 4 questions aimed at leading you to the information needed to verify each claim.\nEach question should be specific, clear, and concise, designed to have a closed-ended objective answer.\n\nWhen abbreviations of any kind are used in the claim, always include in the question, if you know it with certainty, the full name/term plus the abbreviation in parentheses.\n\nHere is the list of claims:\n{claims_list}."
+```
+
+> Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
 
 #### *base_eval_prompt*
-The prompt used to make a final judgment (true, false, or mixture) on a claim based on the answers retrieved from the KG and previously verified claims.
 
-*Recommended value*: This prompt defines the final evaluation logic. The default is well-structured for this task.
+The prompt used to make a final judgment (true, false, or mixture) on a claim based on the answers retrieved from the KG (see the [graphrag configuration for accuracy evaluation](#graphrag)) and previously verified claims. The placeholders `{claim_text}`, `{questions_and_answers_json}` and `{previously_true_claims}` need to be included inside the prompt.
+
+*Recommended value*: this prompt defines the final evaluation logic. Provide examples on how should claims be considered.
+
+*Suggested prompt*:
+
+```json
+"You are an expert fact-checker. Your task is to evaluate a claim based on a set of questions and their corresponding answers, as well as a list of previously verified true claims. The answers are generated from a knowledge base. Based on all the information provided, determine if the claim is true, false, or a mixture of true and false.\n\n- **true**: The provided information fully supports the claim. The claim can also be considered true if it can be logically inferred from the previously verified true claims.\n- **false**: The provided information explicitly contradicts the claim.\n- **mixture**: The provided information partially supports the claim, supports some parts but not others, or is insufficient to make a full determination.\n\nHere is the claim and the supporting information:\n\n**Claim to Evaluate:**\n\"{claim_text}\"\n\n**Questions and Answers for the Claim:**\n{questions_and_answers_json}\n\n**Previously Verified True Claims (for context):**\n{previously_true_claims}\n\n"
+```
+
+> Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
 
 #### *llm_claims_config*, *llm_questions_config*, *llm_evaluator_config*
-Separate LLM configurations for each step of the evaluation process (claim extraction, question generation, and final evaluation).
 
-*Recommended value*: Use fast and cheap models (like `gemini-2.5-flash-lite-preview-06-17`) for these tasks, as they are structured and do not require deep creativity. A low temperature (`0.0`) is recommended for the claims and evaluator models to ensure deterministic and objective outputs.
+Separate LLM configurations for each step of the evaluation process (claim extraction, question generation, and final evaluation). The structure is the same as in [`kg_building_config.json`](#llm_config).
+
+*Recommended values*: 
+- Use fast and cheap models (like `gemini-2.5-flash-lite-preview-06-17`) for these tasks, as the prompts are heavily structured and do not require deep creativity. Furthermore, a very high number of requests will be done for extracting the claims, generating questions, retrieving answers from the knowledge graph and evaluating the claims. 
+- A low temperature (`0.0`) is recommended for the claims and evaluator models to ensure deterministic and objective outputs.
+- Set `"response_mime_type"` to `"application/json"`, which is needed to enforce the output structure in all of these steps. 
 
 ### retrievers
 
-Configures the retriever used during the evaluation phase to find answers to the verification questions in the knowledge graph. The structure is identical to `kg_retrieval_config.json`.
+Configures the retriever used during the evaluation phase to find answers to the verification questions in the knowledge graph. The structure is identical to [`kg_retrieval_config.json`](#kg_retrieval_configjson).
 
-*Recommended value*: Use the same high-performance retriever as in `kg_retrieval_config.json` (e.g., `HybridCypherRetriever`) to ensure the evaluation has access to the best possible context from the knowledge graph. Set `enabled` to `true` for your chosen retriever.
+*Recommended value*: Use the same high-performance retriever as in `kg_retrieval_config.json` (e.g., `HybridCypherRetriever` or `VectorCypherRetriever`) to ensure the evaluation has access to the best possible context from the knowledge graph. Set `enabled` to `true` for your chosen retriever, `false` to the others.
 
 ### graphrag
 
-Configures the RAG process used to answer the verification questions generated in the evaluation pipeline.
+Configures the RAG process used to answer the verification questions generated in the evaluation pipeline. The structure is the same as in [`graphrag_config.json`](#graphrag_configjson).
 
 #### *llm_config*
-The LLM used to synthesize an answer from the context retrieved for a verification question.
 
-*Recommended value*: A fast, cheap, and accurate model is sufficient. Set temperature to `0.0` to ensure answers are strictly based on the provided context.
+The LLM used to synthesize an answer for each question generated for each claim from the context retrieved for a verification question.
+
+*Recommended values*: 
+- Use fast and cheap models (like `gemini-2.5-flash-lite-preview-06-17`) for these tasks, as the prompts are heavily structured and do not require deep creativity. Furthermore, a very high number of requests will be done for extracting the claims, generating questions, retrieving answers from the knowledge graph and evaluating the claims. 
+- A low temperature (`0.0`) is recommended for the claims and evaluator models to ensure deterministic and objective outputs.
+- Set `"response_mime_type"` to `"application/json"`, which is needed to enforce the output structure in this step. 
 
 #### *rag_template_config*
+
 The prompt template for answering the verification questions.
 
-*Recommended value*: The default template and system instructions are optimized to force the LLM to answer only using the provided context, which is critical for an objective evaluation.
+*Recommended value*: the default template and system instructions are optimized to force the LLM to answer only using the provided context, which is critical for an objective evaluation.
+
+*Suggested template*:
+
+```json
+"# Question:\n{query_text}\n \n# Context:\n{context}\n \n# Examples:\n{examples}\n \n# Answer:\n"
+```
+
+*Suggested system instructions*:
+
+```json
+"Answer the Question using the following Context. Only respond with information mentioned in the Context. Do not inject any speculative information not mentioned. If no examples are provided, omit the Examples section in your answer."
+```
 
 #### *query_text*
-The prompt that instructs the RAG pipeline on how to use the context to answer the verification questions for a given claim.
 
-*Recommended value*: The default prompt is well-suited for this task, instructing the model to answer concisely or state when there is not enough information.
+The prompt that instructs the RAG pipeline on how to use the context to answer the verification questions for a given claim. Needs `{claim}` and `{questions}` placeholders in order to work properly. 
+
+It is separated from the `search_text`, which in this case will only be the claim that is being evaluated at each time (an individual claim, so embedders with a short context window - like 256 tokens - should suffice to cover the search text at this step).
+
+*Recommended value*: the prompt should be clear and concise to guide the LLM to answer some questions associated to a claim.
+
+*Suggested prompt*:
+
+```json
+"Using the provided `Context` below, answer the following questions about the `Claim`. Answer concisely and truthfully, without making assumptions or adding information beyond what is provided in the `Context`. If there is not enough information in the `Context` to answer a question, state that by answering with \"Not enough information to answer this question.\".\n\nHere is the claim and the questions:\nClaim: {claim}\nQuestions: {questions}"
+```
+
+> Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
+
+#### *examples*
+
+Few-shot examples to guide the LLM's output format.
+
+*Recommended value*: set examples which show the LLM how to answer a set of questions related to a claim, in a structured manner.
+
+*Suggested examples*:
+
+```json
+"Claim: \"The UN has reported a significant increase in the number of internally displaced persons (IDPs) in Country X due to ongoing conflicts.\"\nQuestions: [\"What is the current number of IDPs in Country X?\", \"What are the main causes of the increase in IDPs in Country X?\", \"How does the current situation compare to previous years?\"]\n\nExample output: {\"What is the current number of IDPs in Country X?\": \"Not enough information to answer this question.\", \"What are the main causes of the increase in IDPs in Country X?\": \"Ongoing conflicts and violence.\", \"How does the current situation compare to previous years?\": \"There has been a significant increase compared to previous years.\"}"
+```
+
+#### *return_context*
+
+If `true`, the context used to generate the report will be saved alongside the report itself.
+
+*Recommended value*: set to `true`. This is invaluable for debugging, verification, and understanding why the LLM included certain information in its report.
 
 ### Most Impactful Parameters
 
-The three base prompts (`base_claims_prompt`, `base_questions_prompt`, `base_eval_prompt`) are crucial as they define the logic of the entire evaluation. The quality of the evaluation depends heavily on how well these prompts guide the LLMs to perform their specific tasks. The choice of `retrievers` is also critical for finding the correct evidence in the graph.
+The three base prompts (`base_claims_prompt`, `base_questions_prompt`, `base_eval_prompt`) are crucial as they define the logic of the entire evaluation. The last prompt, `base_eval_prompt`, has an especially large impact on the final accuracy report that is generated. The quality of the evaluation depends heavily on how well these prompts guide the LLMs to perform their specific tasks. The choice of `retrievers` is also critical for finding the correct evidence in the graph.
