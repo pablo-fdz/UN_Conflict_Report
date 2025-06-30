@@ -1,4 +1,0 @@
-Good examples from Neo4j developers on the use of the `neo4j_graphrag` library: https://github.com/neo4j/neo4j-graphrag-python/tree/main/examples
-- Building the graph from text:
-  - Without using a configuration file: https://github.com/neo4j/neo4j-graphrag-python/blob/main/examples/build_graph/simple_kg_builder_from_text.py
-  - Using a JSON configuration file: https://github.com/neo4j/neo4j-graphrag-python/blob/main/examples/build_graph/from_config_files/simple_kg_pipeline_from_config_file.py (and JSON configuration file: https://github.com/neo4j/neo4j-graphrag-python/blob/main/examples/build_graph/from_config_files/simple_kg_pipeline_config.json)
