@@ -9,7 +9,7 @@
         }
     },
     "llm_config": {
-        "model_name": "gemini-2.5-flash-preview-05-20",
+        "model_name": "gemini-2.5-flash",
         "model_params": {
             "temperature": 0.0
         }
@@ -283,7 +283,7 @@
                 "id": "4",
                 "label": "State",
                 "properties": {
-                    "name": "North Kurdufan"
+                    "name": "North Kordofan"
                 }
             },
             {
@@ -361,15 +361,15 @@
         "FuzzyMatchResolver_config": {
             "filter_query": "WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}",
             "resolve_properties": ["name"],
-            "similarity_threshold": 0.8
+            "similarity_threshold": 0.9
         },
         "SpaCySemanticMatchResolver_config": {
             "filter_query": null,
             "resolve_properties": ["name"],
             "spacy_model": "en_core_web_lg",
-            "similarity_threshold": 0.8
+            "similarity_threshold": 0.99
         },
-        "ex_post_resolver": "SinglePropertyExactMatchResolver"
+        "ex_post_resolver": "SpaCySemanticMatchResolver"
     },
     "dev_settings": {
         "build_with_sample_data": true,

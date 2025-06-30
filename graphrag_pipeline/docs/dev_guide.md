@@ -11,9 +11,10 @@ The pipeline is designed with a modular architecture, separating concerns into d
 -   **`pipeline/`**: Contains the scripts for each major step of the process:
     -   `01_data_ingestion/`: Scripts to fetch data from sources like ACLED.
     -   `02_kg_building/`: Scripts to process ingested data and construct the knowledge graph.
-    -   `03_indexing.py`: Script to create vector and full-text indexes in Neo4j for efficient retrieval.
-    -   `04_ex_post_resolver.py`: Script for running entity resolution after the graph is built.
+    -   `03_indexing`: Script to create vector and full-text indexes in Neo4j for efficient retrieval.
+    -   `04_ex_post_resolver`: Script for running entity resolution after the graph is built.
     -   `05_graphrag/`: The main logic for the GraphRAG process, including report generation.
+    -   `06_evaluation/`: Scripts for evaluating the factual accuracy of the generated reports.
 -   **`library/`**: Contains reusable, high-level abstractions:
     -   `kg_builder/`: Includes the `CustomKGPipeline` which is a tailored version of the `neo4j-graphrag` pipeline.
     -   `kg_indexer/`: A helper class to manage Neo4j graph indexes.
@@ -26,7 +27,8 @@ The pipeline is designed with a modular architecture, separating concerns into d
 
 -   Python 3.10+
 -   Install dependencies: `pip install -r requirements.txt`
--   Access to a Neo4j database and a Google Gemini API key.
+-   A Google Gemini API key. You can get a free one [here](https://aistudio.google.com/app/apikey).
+-   A Neo4j database. A free cloud-hosted instance from [Neo4j Aura](https://neo4j.com/product/auradb/) is recommended. A self-hosted instance is also possible but may require minor code adjustments.
 
 ### 2. Configuration
 
@@ -43,7 +45,7 @@ The pipeline is designed with a modular architecture, separating concerns into d
    GEMINI_API_KEY="your_gemini_api_key"
    ```
 
-4. Review the `.json` configuration files (`data_ingestion_config.json`, `kg_building_config.json`, etc.) to customize the pipeline's behavior.
+4. Review the `.json` configuration files (`data_ingestion_config.json`, `kg_building_config.json`, etc.) to customize the pipeline's behavior. For a detailed explanation of each parameter, see the [`config_files_guide.md`](config_files_guide.md).
 
    > **Important**: All of the values from the JSON configuration files can be adjusted. Nevertheless, **the keys should not be modified under any circumstance**, as the pipeline expects the existence of some keys with particular names. See the section on KG Building for more details on schema configuration.
 
@@ -52,6 +54,9 @@ The pipeline is designed with a modular architecture, separating concerns into d
 The pipeline is executed from the root of the `graphrag_pipeline` directory via `main.py`. You can control which steps are executed using command-line flags.
 
 ```bash
+# To get help on the available arguments
+python main.py --help
+
 # To run the full pipeline: ingest data, build KG, resolve entities ex-post, and generate a report for Sudan
 python main.py --ingest-data --build-kg --resolve-ex-post --graph-retrieval "Sudan"
 
@@ -63,6 +68,12 @@ python main.py --build-kg
 
 # To generate a report for multiple countries (assumes KG is built and indexed)
 python main.py --graph-retrieval "Sudan" "UAE"
+
+# To generate a report and then evaluate its accuracy
+python main.py --retrieval "Sudan" --accuracy-eval
+
+# To evaluate a specific, existing report
+python main.py --accuracy-eval "reports/Sudan/security_report_Sudan_HybridCypher_20250630_120000.md"
 ```
 
 ## Pipeline Steps in Detail
@@ -102,49 +113,10 @@ The default `SimpleKGPipeline` from `neo4j-graphrag` was not sufficient for two 
 1.  **Metadata Handling**: It lacks robust support for creating `Document` nodes with rich metadata from tabular data. Our `CustomKGPipeline` uses a `LexicalGraphBuilder` to link text chunks to a parent `Document` node that stores this metadata.
 2.  **Entity Resolution**: The default resolver (`SinglePropertyExactMatchResolver`) is too conservative. We use the `SpaCySemanticMatchResolver` to merge entities based on semantic similarity, which is more effective for real-world data.
 
-#### Schema Configuration
-
-In the schema configuration (`kg_building_config.json`), `nodes`, `edges` and `triplets` need to have the following structure:
-
-```json
-{
-    "schema_config": {
-        "nodes": [
-            {"label": "Event", "description": "...", "properties": [
-                {"name": "name", "type": "STRING", "description": "..."},
-                {"name": "date", "type": "DATE"}
-            ]}
-        ],
-        "edges": [
-            {"label": "OCCURRED_IN", "description": "...", "properties": [
-                {"name": "start_date", "type": "DATE"}
-            ]}
-        ],
-        "triplets": [
-            ["Event", "OCCURRED_IN", "Country"]
-        ]
-    }
-}
-```
-
-Possible property types are: `"BOOLEAN"`, `"DATE"`, `"FLOAT"`, `"INTEGER"`, `"STRING"`, etc.
-
-#### Embedding Models
-
-There is a trade-off between an embedding model's context window and the LLM's processing cost.
-
--   Embedding models like `all-MiniLM-L6-v2` have small context windows (e.g., 256 tokens), which may require splitting a single news article into multiple chunks.
--   Splitting articles increases the number of calls to the entity extraction LLM, which can be costly and hit rate limits.
--   While the most important information in news is often at the beginning, larger context windows can capture more nuance. Consider these `SentenceTransformer` models:
-    -   `all-mpnet-base-v2`: Best quality, 384 token limit.
-    -   `all-distilroberta-v1`: Faster, 512 token limit.
-    -   `all-MiniLM-L6-v2`: Fastest, good quality, 256 token limit.
--   An alternative is Google's `text-embedding-004`, which is free (with rate limits) and supports up to 2,048 tokens.
-
 ### 3. Knowledge Graph Indexing
 
 -   **Process**: Creates vector and full-text indexes on the `Chunk` nodes in the knowledge graph. This is crucial for efficient similarity searches and keyword lookups during the retrieval phase.
--   **Script**: `pipeline/03_indexing.py`
+-   **Script**: `pipeline/03_indexing/`
 -   **Why index?**:
     -   **Vector indexes** are needed for retrievers that use the numerical representation (embeddings) of text to find the most semantically similar information to a query.
     -   **Text indexes** are useful for retrievers that perform keyword searches on the raw text of the ingested data.
@@ -167,6 +139,25 @@ The pipeline supports several retrieval strategies to fetch context from the kno
 | **HybridRetriever**       | Combines both vector and full-text search for more robust retrieval. |
 | **HybridCypherRetriever** | Same as HybridRetriever with a retrieval query similar to VectorCypherRetriever. |
 | **Text2Cypher**           | Translates the natural language question directly into a Cypher query to be run against the graph. |
+
+### 5. Accuracy Evaluation
+
+-   **Process**: Evaluates the factual accuracy of a generated report. It extracts claims from the report, generates verification questions, and queries the knowledge graph to find supporting or refuting evidence.
+-   **Core Logic**: `AccuracyEvaluator`.
+-   **Configuration**: `config_files/evaluation_config.json`.
+-   **Output**: A detailed markdown file(s) with the evaluation results for each claim, and overall factual accuracy conclusions. 
+
+## Common Issues & Troubleshooting
+
+If you encounter unexpected errors, check for these common issues:
+
+-   **No Internet Connection**: The pipeline requires an internet connection to access the Gemini API and potentially other remote resources.
+-   **Neo4j Instance Inactive or Inexistent**: 
+    -   Ensure your Neo4j Aura instance is existent, active and not paused ("a Free tier instance is considered inactive when there have been no write queries for 3 days", and "a paused Free Instance will be deleted after 30 days, and you won't be able to restore/recover its data" [source](https://support.neo4j.com/s/article/16094506528787-Support-resources-and-FAQ-for-Aura-Free-Tier)). 
+    -   If self-hosting, make sure the database is running.
+-   **CUDA errors with `torch`** when building the knowledge graph and embedding input texts. Consider using a CPU for better stability (performance should not be downgraded significantly since embedders are just used out-of-the-box).
+-   **Gemini API Rate Limits**: The free tier of the Gemini API has rate limits (e.g., tokens per minute, requests per day). Long-running processes or large datasets can exceed these limits, causing errors. Check the current limits [here](https://ai.google.dev/gemini-api/docs/rate-limits#free-tier). Usage of the API can be tracked and checked in [Google AI Studio](https://aistudio.google.com/usage).
+-   **Exceeded Tier Limitations of Neo4j Aura Instance**: for the free tier, up to 200,000 nodes and 400,000 relationships (edges) can be stored ([source](https://support.neo4j.com/s/article/16094506528787-Support-resources-and-FAQ-for-Aura-Free-Tier)).
 
 ## How to Contribute
 

@@ -16,9 +16,9 @@ from dotenv import load_dotenv
 import json
 from neo4j_graphrag.retrievers.base import Retriever
 from library.kg_indexer import KGIndexer
-from library.kg_builder.utilities import GeminiLLM
+from library.kg_builder.utilities import GeminiLLM, get_rate_limit_checker
 from neo4j_graphrag.generation import RagTemplate
-from neo4j_graphrag.generation.graphrag import GraphRAG
+from library.graphrag import CustomGraphRAG
 
 # Neo4j and Neo4j GraphRAG imports
 import neo4j
@@ -35,7 +35,9 @@ class GraphRAGConstructionPipeline:
         self.config_files_path = os.path.join(self.graphrag_pipeline_dir, 'config_files')  # Find path to config_files folder
         self._load_configs()
         self._setup_credentials()
-        
+        self._set_llm_rate_limit()
+        self.llm_usage = 0  # Track LLM usage for rate limiting
+
     def _load_configs(self):
         """Load all configuration files."""
 
@@ -75,6 +77,15 @@ class GraphRAGConstructionPipeline:
         if not self.gemini_api_key:
             raise ValueError("Gemini API key is not set. Please provide a valid API key.")
     
+    def _set_llm_rate_limit(self):
+        
+        # Get rate limit from config, default to 20
+        rpm = self.graphrag_config['llm_config'].get('max_requests_per_minute', 20)
+        # Subtract 20% for safety
+        safe_rpm = round(rpm - rpm * 0.2)
+        print(f"Applying a global rate limit of LLM requests of {safe_rpm} requests per minute.")
+        self.check_rate_limit = get_rate_limit_checker(safe_rpm)
+
     def _get_indexes(self, driver: neo4j.Driver):
         """Get the vector and fulltext indexes in the database."""
 
@@ -106,8 +117,8 @@ class GraphRAGConstructionPipeline:
             expected_inputs=['query_text', 'context', 'examples'],  # Define expected inputs for the template
             system_instructions=self.graphrag_config['rag_template_config'].get('system_instructions', None),  # Use custom system instructions if specified, otherwise use default
         )
-        
-        graphrag = GraphRAG(
+
+        graphrag = CustomGraphRAG(
             llm=llm,  # LLM for generating answers
             retriever=retriever,  # Retriever for fetching relevant context 
             prompt_template=rag_template  # RAG template for formatting the prompt
@@ -139,32 +150,39 @@ class GraphRAGConstructionPipeline:
             # Get the initialized GraphRAG pipeline
             graphrag = self._create_graphrag_pipeline(retriever)
 
+            # Format the search text for the retriever (i.e., the text that will be used to search the knowledge graph)
+            formatted_search_text = self.graphrag_config.get('search_text', '').format(country=country)  # Use the country in the search text if specified, otherwise use an empty string
+
             # Format the query text for generating the report with the input country
             formatted_query_text = self.graphrag_config.get('query_text', '').format(country=country)  # Use the country in the query text if specified, otherwise use an empty string
+            
+            # Check rate limit before LLM call
+            self.check_rate_limit()
 
             # Generate the answer using the GraphRAG pipeline
             graphrag_results = graphrag.search(
+                search_text=formatted_search_text,  # Search query for the retriever (i.e., the text that will be used to search the knowledge graph)
                 query_text=formatted_query_text,  # User question that is used to search the knowledge graph (i.e., vector search and fulltext search is made based on this question); defaults to empty string if not provided
                 message_history=None,  # Optional message history for conversational context (omitted for now)
                 examples=self.graphrag_config.get('examples', ''),  # Optional examples to guide the LLM's response (defaults to empty string)
                 retriever_config=retriever_search_params,  # Configuration for the search parameters of the input retriever
-                return_context=self.graphrag_config.get('return_context', True),  # Whether to return the context used for generating the answer (defaults to True)
+                return_context=self.graphrag_config.get('return_context', True),   # Whether to return the context used for generating the answer (defaults to True). Can be obtained with graphrag_results['retriever_result']
+                structured_output=False  # Whether to return the output in a structured format (in this case, set to False since we want a markdown report - not a structured JSON output)
             )
             
-            # Get the generated answer from the GraphRAG results
+            self.llm_usage += 1  # Increment the LLM usage counter
+
+            # Get the generated answer from the GraphRAG results (the string)
             generated_answer = graphrag_results.answer
 
-            # If return context is True, the context used for generating the 
-            # answer is also returned (disabled for now, if enabled should 
-            # be uncommented and appended to the returned results)
-            # if self.graphrag_config.get('return_context', True):
-            #     context = graphrag_results.retriever_result
-            # else:
-            #     context = None
+            if self.graphrag_config.get('return_context', True):  # If return_context is True, we can also access the context used for generating the answer
+                retrieved_context = graphrag_results.retriever_result  # For now, not used, but can be useful for debugging or further processing
 
         except Exception as e:
             raise RuntimeError(f"Error during GraphRAG construction pipeline execution: {e}")
         
+        print(f"\n=== LLM requests made in this run: {self.llm_usage} ===\n")
+
         return generated_answer  # Return the generated answer from the GraphRAG pipeline
     
     def save_report_to_markdown(
