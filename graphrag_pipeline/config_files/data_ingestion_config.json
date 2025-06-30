@@ -1,14 +1,28 @@
 {
-    "acled": {
-      "ingestion": false,
-      "include_in_kg": false
-    },
-    "factal": {
-      "ingestion": false,
-      "include_in_kg": false
-    },
-    "google_news": {
-      "ingestion": false,
-      "include_in_kg": false
-    }
+  "acled": {
+    "ingestion": true,
+    "include_in_kg": true,
+    "start_date": "2025-05-01",
+    "end_date": "2025-05-31",
+    "country": "Sudan"
+  },
+  "acled_cast": {
+    "country": "Indonesia",
+    "window": 1,
+    "horizon": 2
+  },
+  "factal": {
+    "ingestion": true,
+    "include_in_kg": true,
+    "start_date": "2025-06-01",
+    "end_date": "2025-06-28",
+    "country": "Sudan"
+  },
+  "google_news": {
+    "ingestion": false,
+    "include_in_kg": false,
+    "start_date": "2025-05-01",
+    "end_date": "2025-06-01",
+    "country": "Sudan"
+  }
 }
