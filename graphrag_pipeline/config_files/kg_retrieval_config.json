@@ -49,8 +49,6 @@
                 "USER INPUT: 'What events happened in Sudan?'\nQUERY: MATCH (e:Event)-[:HAPPENED_IN]->(c:Country) WHERE c.name = 'Sudan' RETURN e.name, e.type",
                 "USER INPUT: 'Which actors participated in attacks?'\nQUERY: MATCH (a:Actor)-[:PARTICIPATED_IN]->(e:Event) WHERE e.type = 'Attack' RETURN a.name, a.type"
             ]
-        },
-        "search_params": {
         }
     }
 }

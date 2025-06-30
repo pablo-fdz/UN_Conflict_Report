@@ -517,24 +517,160 @@ Maximum number of concurrent LLM requests for entity extraction.
 
 ## `kg_retrieval_config.json`
 
-This file configures the various "retrievers" that can be used to fetch information from the knowledge graph to answer a query.
+This file configures the various "retrievers" that can be used to fetch information from the knowledge graph to answer a query. For each of the retrievers that are `enabled`, a report for the queried country will be generated (e.g., if a report is requested for Sudan and all 5 retrievers are enabled, 5 reports will be generated).
 
--   **VectorRetriever**: Performs a simple similarity search on text chunk embeddings.
-    -   *enabled*: Set to `true` to use this retriever.
--   **VectorCypherRetriever**: Augments the vector search by running a Cypher query to fetch additional connected data from the graph, providing richer context.
-    -   *enabled*: Set to `true` to use this retriever.
-    -   *retrieval_query*: The Cypher query to execute for each retrieved chunk to expand its context.
--   **HybridRetriever**: Combines vector search (semantic) and full-text search (keyword).
-    -   *enabled*: Set to `true` to use this retriever.
--   **HybridCypherRetriever**: The same as `HybridRetriever`, but with an additional Cypher query to expand context, similar to `VectorCypherRetriever`.
-    -   *enabled*: Set to `true` to use this retriever.
--   **Text2CypherRetriever**: Translates a natural language question into a Cypher query using an LLM.
-    -   *enabled*: Set to `true` to use this retriever.
-    -   *llm_config*: The LLM configuration for the text-to-Cypher translation.
+More information on each of the retrievers mentioned below can be found in the [`neo4j-graphrag` user guide](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html#retriever-configuration).
+
+### VectorRetriever
+
+Performs a simple similarity search on text chunk embeddings (regular RAG).
+
+#### *enabled*
+
+Set to `true` to use this retriever.
+
+*Recommended value*: set to `false` (results are significantly better for retrievers that are enhanced with graph traversal, i.e., "Cypher" retrievers).
+
+#### *return_properties*
+
+List of properties of the text chunk nodes to return from the vector search results, apart from the similarity scores (cosine similarity scores by default). 
+
+*Recommended value*: only include `"text"` in the list - together with the similarity score, only the text of the text chunk will be returned. 
+
+#### *search_params*
+
+Parameters that configure the context retrieval from the knowledge graph. For vector-based methods, this only includes `top_k` (integer), which denotes the top *k* properties and similarity scores to return (e.g., if set to 5, it will return the top 5 chunks with the highest cosine similarity between the search query and each of the text chunks in the knowledge graph).
+
+*Trade-offs*:
+- Setting a high `top_k` will retrieve more context, at the cost of more potential noise.
+- Setting a low `top_k` may miss relevant context to generate the report.
+
+*Recommended value*: set to a relatively high value, such as 20.
+
+### VectorCypherRetriever 
+
+Augments the vector search by running a Cypher query to fetch additional connected data from the graph, providing richer context.
+
+#### *enabled*
+
+Set to `true` to use this retriever.
+
+*Recommended value*: set this retriever *or* the HybridCypherRetriever to `true`, as they are the retrievers that exhibit the highest-quality results.
+
+#### *retrieval_query*
+
+The Cypher query (as a string) to execute for each retrieved chunk to expand its context.
+
+*Default query* (without JSON formatting):
+```cypher
+//1) Go out 2-3 hops in the entity graph and get relationships
+WITH node AS chunk
+MATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()
+UNWIND relList AS rel
+
+//2) collect relationships and text chunks
+WITH collect(DISTINCT chunk) AS chunks,
+    collect(DISTINCT rel) AS rels
+
+//3) format and return context
+RETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') + '\\n\\n=== kg_rels ===\\n' +
+apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info
+```
+
+*Default query* (with proper JSON formatting):
+```cypher
+"//1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n//2) collect relationships and text chunks\nWITH collect(DISTINCT chunk) AS chunks,\n collect(DISTINCT rel) AS rels\n\n//3) format and return context\nRETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') + '\\n\\n=== kg_rels ===\\n' +\n apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info"
+```
+
+*Recommended query*: set a query that is able to extract all of the necessary context surrounding an event (actors, countries, etc.) as well as the extraction of the sources for proper referencing. Consider the graph schema when setting this query.
+
+#### *search_params*
+
+Same as [VectorRetriever](#vectorretriever) (see above).
+
+
+### HybridRetriever
+
+Combines vector search (semantic) and full-text search (keyword).
+
+#### *enabled*
+
+Set to `true` to use this retriever.
+
+*Recommended value*: set to `false` (results are significantly better for retrievers that are enhanced with graph traversal, i.e., "Cypher" retrievers).
+
+#### *return_properties*
+
+Same as [VectorRetriever](#vectorretriever) (see above).
+
+#### *search_params*
+
+Parameters that configure the context retrieval from the knowledge graph. 
+
+*Parameters*:
+- `top_k`: an integer which denotes the top *k* properties and similarity scores to return (e.g., if set to 5, it will return the top 5 chunks with the highest cosine similarity between the search query and each of the text chunks in the knowledge graph).
+  - Setting a high `top_k` will retrieve more context, at the cost of more potential noise.
+  - Setting a low `top_k` may miss relevant context to generate the report.
+- `ranker`: ranker to use for ranking the results. `"linear"` is a simple linear combination of the vector and text scores, `"naive"` is default value and just combines the scores without weighting them.
+- `alpha`: weight for the vector score when using the linear ranker. The fulltext index score is multiplied by (1 - alpha). Required when using the linear ranker; must be between 0 and 1. 
+
+*Recommended values*:
+- `top_k`: set to a relatively high value, such as 20.
+- `ranker`: `linear`.
+- `alpha`: set to 0.5 for equal weighting of vector and full text scores.
+
+### HybridCypherRetriever
+
+The same as `HybridRetriever`, but with an additional Cypher query to expand context, similar to `VectorCypherRetriever`.
+
+#### *enabled*
+
+Set to `true` to use this retriever.
+
+*Recommended value*: set this retriever *or* the VectorCypherRetriever to `true`, as they are the retrievers that exhibit the highest-quality results.
+
+#### *retrieval_query*
+
+See the documentation in [VectorCypherRetriever](#vectorcypherretriever).
+
+#### *search_params*
+
+See the documentation in [HybridRetriever](#hybridretriever).
+
+### Text2CypherRetriever
+
+Translates a natural language question into a Cypher query using an LLM.
+
+#### *enabled*
+
+Set to `true` to use this retriever.
+
+*Recommended value*: set to `false` (results are significantly better for retrievers that are enhanced with graph traversal, i.e., "Cypher" retrievers). This retriever does not use RAG (neither embeddings nor full text search). Its results are quite bad, so it should be avoided.
+
+#### *llm_config*
+
+Configuration for the LLM used for text-to-Cypher translation.
+
+*Recommended values*:
+- Fast model (highest quality is not needed).
+- Low temperature.
+
+#### *examples_config*
+
+Configuration of the examples passed to the LLM to construct the Cypher queries from natural language. Examples are passed if `include_examples` is set to `true`.
+
+*Suggested examples*:
+```json
+[
+    "USER INPUT: 'What events happened in Sudan?'\nQUERY: MATCH (e:Event)-[:HAPPENED_IN]->(c:Country) WHERE c.name = 'Sudan' RETURN e.name, e.type",
+    "USER INPUT: 'Which actors participated in attacks?'\nQUERY: MATCH (a:Actor)-[:PARTICIPATED_IN]->(e:Event) WHERE e.type = 'Attack' RETURN a.name, a.type"
+]
+```
+
 
 ### Most Impactful Parameters
 
-The `enabled` flag for each retriever determines which strategies are available. The choice of retriever has a massive impact on the quality of the context provided to the final generation LLM. `HybridCypherRetriever` is often a powerful choice as it combines keyword search, semantic search, and graph traversal, but the `retrieval_query` must be well-crafted.
+The `enabled` flag for each retriever determines which strategies are available. The choice of retriever has a massive impact on the quality of the context provided to the final generation LLM. `HybridCypherRetriever` is often a powerful choice as it combines keyword search, semantic search, and graph traversal, but the `retrieval_query` must be well-crafted. Except for the `VectorCypherRetriever`, the rest should be avoided.
 
 ## `graphrag_config.json`
 
@@ -569,112 +705,4 @@ This file configures the accuracy evaluation pipeline, which fact-checks the gen
 
 ### Most Impactful Parameters
 
-The three base prompts (`base_claims_prompt`, `base_questions_prompt`, `base_eval_prompt`) are crucial as they define the logic of the entire evaluation. The quality of the evaluation depends heavily on how well these prompts guide the LLMs to perform their specific tasks. The choice of `retrievers` is also critical for finding the correct evidence in the graph.<!-- filepath: /media/pablo/Shared files/GDrive personal/BSE - DSDM/3-Master_Thesis/UN_Conflict_Report/graphrag_pipeline/docs/config_files_guide.md -->
-# Configuration Files Guide
-
-This guide provides a detailed explanation of each configuration file used in the pipeline. These files allow you to customize the pipeline's behavior without modifying the source code. Remember, you can change the *values* in these JSON files, but the *keys* should not be altered as the pipeline code depends on them.
-
-## `data_ingestion_config.json`
-
-This file controls which data sources are ingested and used for building the knowledge graph.
-
--   **acled**: Configuration for the ACLED data source.
-    -   *ingestion*: `true` to download and process data from this source, `false` to skip it. Trade-offs: Ingesting more sources provides a richer knowledge base but increases processing time and storage requirements.
-    -   *include_in_kg*: `true` to use the ingested data from this source during the knowledge graph building phase. Trade-offs: Including more data in the KG can improve the comprehensiveness of reports but also increases the complexity and cost of KG construction and querying.
--   **factal**: Configuration for the Factal data source.
-    -   *ingestion*: Same as above.
-    -   *include_in_kg*: Same as above.
--   **google_news**: Configuration for the Google News data source.
-    -   *ingestion*: Same as above.
-    -   *include_in_kg*: Same as above.
-
-### Most Impactful Parameters
-
-The `ingestion` and `include_in_kg` flags for each data source are the key parameters here. They directly determine the scope and content of your knowledge graph.
-
-## `kg_building_config.json`
-
-This file configures every aspect of the knowledge graph construction process, from text processing to entity resolution.
-
--   **text_splitter_config**: Defines how input documents are divided into smaller chunks.
-    -   *chunk_size*: The maximum number of characters for each text chunk. Trade-offs: Larger chunks provide more context to the LLM but are more expensive to process and can be less precise for retrieval. Smaller chunks are cheaper and more focused but may lose important context that spans across chunks.
-    -   *chunk_overlap*: The number of characters that overlap between consecutive chunks. Trade-offs: Higher overlap helps preserve context across chunk boundaries but increases the total amount of data to process and store.
--   **embedder_config**: Specifies the model used to create numerical representations (embeddings) of text chunks.
-    -   *model_name*: The name of the SentenceTransformer model to use. Trade-offs: There's a balance between model quality, speed, and context window size. For example, `all-mpnet-base-v2` offers high quality but has a smaller context window, while `all-MiniLM-L6-v2` is faster with a smaller memory footprint.
--   **llm_config**: Configures the Large Language Model used for extracting entities and relationships.
-    -   *model_name*: The identifier for the LLM (e.g., `gemini-2.5-flash`). Trade-offs: More powerful models may yield more accurate extractions but are slower and more expensive. Lighter models are faster and cheaper but might miss nuances.
-    -   *model_params*: Parameters to control the LLM's behavior, like `temperature`. A `temperature` of `0.0` makes the output deterministic and is recommended for extraction tasks.
-    -   *max_requests_per_minute*: Rate limit to avoid exceeding API quotas. Trade-offs: A higher value speeds up processing but risks hitting API rate limits. A lower value is safer but slower.
--   **schema_config**: Defines the structure (nodes, edges, properties) of the knowledge graph.
-    -   *create_schema*: If `true`, the pipeline will attempt to create the defined schema in the Neo4j database.
-    -   *nodes*, *edges*, *triplets*: These arrays define the allowed entity types, relationship types, and the valid connections between them. This is the blueprint for your graph. Trade-offs: A more detailed schema can capture more specific information but makes the extraction task harder for the LLM. A simpler schema is easier to populate but may be less expressive.
--   **prompt_template_config**: Configures the prompt used to instruct the LLM on how to extract information.
-    -   *use_default*: If `true`, it uses the default prompt from the `neo4j-graphrag` library. If `false`, it uses the custom `template` provided.
-    -   *template*: A custom prompt template. This gives you fine-grained control over the LLM's extraction behavior.
--   **entity_resolution_config**: Configures how the pipeline merges duplicate or similar entities.
-    -   *use_resolver*: If `true`, enables the entity resolution step.
-    -   *resolver*: The name of the resolver algorithm to use. `SpaCySemanticMatchResolver` is recommended for its ability to merge entities based on semantic meaning, which is more robust than exact string matching.
-    -   *ex_post_resolver*: The resolver to use in the optional ex-post resolution step. `SinglePropertyExactMatchResolver` is a fast and conservative choice for a final cleanup.
--   **dev_settings**: Settings for development and debugging.
-    -   *build_with_sample_data*: If `true`, the pipeline will run with a small, predefined sample of data, which is useful for quick tests.
-    -   *batch_size*: The number of chunks to process in a single batch. Trade-offs: Larger batches can be more efficient but consume more memory.
-
-### Most Impactful Parameters
-
-`schema_config` is the most critical parameter as it defines the fundamental structure of your knowledge graph. The `llm_config` and `prompt_template_config` are also highly impactful, as they directly control the quality of the information extracted from your documents. Finally, the choice of `resolver` in `entity_resolution_config` significantly affects the cleanliness and connectivity of your final graph.
-
-## `kg_retrieval_config.json`
-
-This file configures the various "retrievers" that can be used to fetch information from the knowledge graph to answer a query.
-
--   **VectorRetriever**: Performs a simple similarity search on text chunk embeddings.
-    -   *enabled*: Set to `true` to use this retriever.
--   **VectorCypherRetriever**: Augments the vector search by running a Cypher query to fetch additional connected data from the graph, providing richer context.
-    -   *enabled*: Set to `true` to use this retriever.
-    -   *retrieval_query*: The Cypher query to execute for each retrieved chunk to expand its context.
--   **HybridRetriever**: Combines vector search (semantic) and full-text search (keyword).
-    -   *enabled*: Set to `true` to use this retriever.
--   **HybridCypherRetriever**: The same as `HybridRetriever`, but with an additional Cypher query to expand context, similar to `VectorCypherRetriever`.
-    -   *enabled*: Set to `true` to use this retriever.
--   **Text2CypherRetriever**: Translates a natural language question into a Cypher query using an LLM.
-    -   *enabled*: Set to `true` to use this retriever.
-    -   *llm_config*: The LLM configuration for the text-to-Cypher translation.
-
-### Most Impactful Parameters
-
-The `enabled` flag for each retriever determines which strategies are available. The choice of retriever has a massive impact on the quality of the context provided to the final generation LLM. `HybridCypherRetriever` is often a powerful choice as it combines keyword search, semantic search, and graph traversal, but the `retrieval_query` must be well-crafted.
-
-## `graphrag_config.json`
-
-This file configures the final step of the pipeline: generating the security report using the context fetched by a retriever.
-
--   **llm_config**: The LLM used to synthesize the final report from the retrieved context.
--   **rag_template_config**: The prompt template for the final report generation.
-    -   *system_instructions*: High-level instructions for the LLM on how to behave (e.g., "Answer only using the context provided").
--   **search_text**: The initial, broad query used to kick off the retrieval process (e.g., "Security events in {country}").
--   **query_text**: The detailed prompt given to the LLM to generate the final report, instructing it on structure, tone, and content.
--   **examples**: Few-shot examples to guide the LLM's output format (currently empty).
--   **return_context**: If `true`, the context used to generate the report will be saved alongside the report for debugging and verification.
-
-### Most Impactful Parameters
-
-`query_text` is the most important parameter here, as it directly instructs the LLM on what kind of report to generate. The `llm_config` also plays a key role in the quality and coherence of the final output.
-
-## `evaluation_config.json`
-
-This file configures the accuracy evaluation pipeline, which fact-checks the generated reports against the knowledge graph.
-
--   **section_split**:
-    -   *split_pattern*: A regular expression used to split the generated report into sections for evaluation.
--   **accuracy_evaluation**: Contains prompts and configurations for the evaluation steps.
-    -   *base_claims_prompt*: The prompt used to instruct an LLM to extract verifiable claims from a report section.
-    -   *base_questions_prompt*: The prompt used to generate questions to verify each claim.
-    -   *base_eval_prompt*: The prompt used to make a final judgment (true, false, mixture) on a claim based on the answers retrieved from the KG.
-    -   *llm_claims_config*, *llm_questions_config*, *llm_evaluator_config*: Separate LLM configurations for each step of the evaluation process (claim extraction, question generation, final evaluation).
--   **retrievers**: Configures the retriever used during the evaluation phase to find answers to the verification questions in the knowledge graph. The structure is identical to `kg_retrieval_config.json`.
--   **graphrag**: Configures the RAG process used to answer the verification questions.
-    -   *query_text*: The prompt used to ask the RAG pipeline to answer the verification questions for a given claim.
-
-### Most Impactful Parameters
-
-The three base prompts (`base_claims_prompt`, `base_questions_prompt`, `base_eval_prompt`) are crucial as they define the logic of the entire evaluation. The quality of the evaluation depends heavily on how well these prompts guide the LLMs to perform their specific tasks. The choice of `retrievers` is also critical for finding the correct evidence in the
+The three base prompts (`base_claims_prompt`, `base_questions_prompt`, `base_eval_prompt`) are crucial as they define the logic of the entire evaluation. The quality of the evaluation depends heavily on how well these prompts guide the LLMs to perform their specific tasks. The choice of `retrievers` is also critical for finding the correct evidence in the graph.
