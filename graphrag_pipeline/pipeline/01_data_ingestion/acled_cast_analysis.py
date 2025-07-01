@@ -68,6 +68,9 @@ def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Opti
     
     cast = pl.read_csv(io.BytesIO(response.content))
     
+    # Filter for exact country match
+    cast = cast.filter(pl.col("country") == country)
+    
     # Process month names to numbers
     month_map = {
         "January": 1, "February": 2, "March": 3, "April": 4,
@@ -173,33 +176,31 @@ def calculate_percent_increase(cast_clean: pl.DataFrame) -> pl.DataFrame:
 
 def identify_hotspots_and_regions(cast_clean: pl.DataFrame, window: int = 1, horizon: int = 2):
     """
-    Identify hotspots and get all regions for the specified horizon.
+    Identify hotspots and get all regions for the last month of the specified horizon.
     
     Args:
         cast_clean: Processed CAST data
         window: Number of past months to calculate average
-        horizon: Number of months ahead to check for hotspots
+        horizon: Number of months ahead to check for hotspots (will use the last month only)
     
     Returns:
-        Tuple of (hotspots DataFrame, all_regions DataFrame)
+        Tuple of (hotspots DataFrame, all_regions DataFrame, hotspots_list)
     """
     hot_col = f"hotspot{window}"
     
-    # Get current month and calculate target months
+    # Get current month and calculate the target month (last month of horizon)
     current_date = datetime.now()
-    months_to_check = []
-    for i in range(horizon):
-        check_date = current_date + relativedelta(months=i)
-        months_to_check.append(check_date.strftime("%Y-%m"))
+    target_month = current_date + relativedelta(months=horizon-1)
+    target_month_str = target_month.strftime("%Y-%m")
 
-    # Filter hotspots (hotspot1 == 1 and in the next 2 months)
+    # Filter hotspots (hotspot1 == 1 and in the target month only)
     hotspots = cast_clean.filter(
-        (pl.col("year_month").is_in(months_to_check)) & (pl.col(hot_col) == 1)
+        (pl.col("year_month") == target_month_str) & (pl.col(hot_col) == 1)
     )
 
-    # Get all regions for the same time period
+    # Get all regions for the target month only
     all_regions = cast_clean.filter(
-        pl.col("year_month").is_in(months_to_check)
+        pl.col("year_month") == target_month_str
     )
 
     hotspots_list = hotspots["admin1"].unique().to_list()
@@ -207,293 +208,41 @@ def identify_hotspots_and_regions(cast_clean: pl.DataFrame, window: int = 1, hor
     return hotspots, all_regions, hotspots_list
 
 
-def get_coordinates(country: str, email: str, api_key: str) -> pl.DataFrame:
+def save_acled_cast(hotspots, country: str):
     """
-    Get coordinates for admin1 regions from ACLED API.
+    Save the processed data as parquet file.
     
     Args:
+        hotspots: Processed hotspots DataFrame (Polars)
         country: Country name
-        email: ACLED API email
-        api_key: ACLED API key
-    
-    Returns:
-        DataFrame with admin1 coordinates
     """
-    parameters = {
-        "email": email,
-        "key": api_key,
-        "country": country,
-        "fields": "admin1|longitude|latitude",
-        "limit": 0
-    }
-
-    url = "https://api.acleddata.com/acled/read.csv"
-    response = requests.get(url, params=parameters, timeout=60)
-    response.raise_for_status()
-
-    coords = pl.read_csv(io.BytesIO(response.content))
-    coords = coords.group_by("admin1").agg([
-        pl.col("longitude").mean().alias("longitude"),
-        pl.col("latitude").mean().alias("latitude"),
-    ])
-    return coords
-
-
-def get_shapefile(country: str) -> gpd.GeoDataFrame:
-    """
-    Download and load country shapefile from GADM.
+    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled_cast'
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    Args:
-        country: Country name
+    # Convert Polars DataFrame to pandas for parquet saving
+    if hasattr(hotspots, 'to_pandas'):
+        # It's a Polars DataFrame
+        df_to_save = hotspots.to_pandas()
+    else:
+        # It's already a pandas DataFrame
+        df_to_save = hotspots
     
-    Returns:
-        GeoDataFrame with admin1 shapes
-    """
-    # Get ISO-3 code for the country
-    iso3 = pycountry.countries.lookup(country).alpha_3
-
-    # Download GADM level-1 shapefile if not cached
-    zip_url = f"https://geodata.ucdavis.edu/gadm/gadm4.1/shp/gadm41_{iso3}_shp.zip"
-    zip_path = Path(f"gadm41_{iso3}.zip")
-    if not zip_path.exists():
-        with urllib.request.urlopen(zip_url) as resp:
-            zip_path.write_bytes(resp.read())
-
-    # Read the level-1 layer directly from the zip
-    layer = f"gadm41_{iso3}_1"
-    adm1_shapes = gpd.read_file(f"zip://{zip_path}!{layer}.shp")
-    return adm1_shapes
+    date = datetime.now().strftime('%Y-%m-%d')
+    output_path = output_dir / f"ACLED_CAST_{country}_{date}.parquet"
+    df_to_save.to_parquet(output_path)
 
 
-def create_merged_mapping(coords: pl.DataFrame, adm1_shapes: gpd.GeoDataFrame, 
-                         all_regions: pl.DataFrame) -> gpd.GeoDataFrame:
-    """
-    Streamlined pipeline to merge coordinates, admin shapes, and all regions data.
-    
-    Args:
-        coords: Coordinates DataFrame
-        adm1_shapes: Admin1 shapes GeoDataFrame
-        all_regions: All regions DataFrame with conflict data
-    
-    Returns:
-        Merged GeoDataFrame ready for visualization
-    """
-    # Convert Polars coords to pandas for easier merging
-    coords_pd = coords.to_pandas()
-    all_regions_pd = all_regions.to_pandas()
-    
-    # Start with the admin1 shapes as base and initialize empty columns
-    final_df = adm1_shapes.copy()
-    final_df['admin1'] = None
-    final_df['longitude'] = None
-    final_df['latitude'] = None
-    final_df['match_method'] = None
-    
-    # Step 1: Direct name matching (NAME_1)
-    
-    name1_matches = coords_pd.merge(
-        final_df[['NAME_1']], 
-        left_on="admin1", 
-        right_on="NAME_1", 
-        how="inner"
-    )
-    
-    # Update final_df with NAME_1 matches
-    for _, coord_row in name1_matches.iterrows():
-        mask = final_df['NAME_1'] == coord_row['NAME_1']
-        final_df.loc[mask, 'admin1'] = coord_row['admin1']
-        final_df.loc[mask, 'longitude'] = coord_row['longitude']
-        final_df.loc[mask, 'latitude'] = coord_row['latitude']
-        final_df.loc[mask, 'match_method'] = 'NAME_1'
-    
-    matched_admin1 = name1_matches['admin1'].tolist()
-    
-    # Step 2: VARNAME_1 matching for unmatched coords
-    if 'VARNAME_1' in adm1_shapes.columns:
-        unmatched_coords = coords_pd[~coords_pd['admin1'].isin(matched_admin1)]
-        
-        if len(unmatched_coords) > 0:
-            varname_matches = unmatched_coords.merge(
-                final_df[['NAME_1', 'VARNAME_1']], 
-                left_on="admin1", 
-                right_on="VARNAME_1", 
-                how="inner"
-            )
-            
-            # Update final_df with VARNAME_1 matches
-            for _, coord_row in varname_matches.iterrows():
-                mask = final_df['NAME_1'] == coord_row['NAME_1']
-                final_df.loc[mask, 'admin1'] = coord_row['admin1']
-                final_df.loc[mask, 'longitude'] = coord_row['longitude']
-                final_df.loc[mask, 'latitude'] = coord_row['latitude']
-                final_df.loc[mask, 'match_method'] = 'VARNAME_1'
-            
-            matched_admin1.extend(varname_matches['admin1'].tolist())
-    
-    # Step 3: Spatial matching for remaining unmatched coords
-    still_unmatched = coords_pd[~coords_pd['admin1'].isin(matched_admin1)]
-    
-    if len(still_unmatched) > 0:
-        
-        # Create Point geometries
-        still_unmatched = still_unmatched.copy()
-        still_unmatched['point_geom'] = [
-            Point(row['longitude'], row['latitude']) for _, row in still_unmatched.iterrows()
-        ]
-        
-        # Convert to GeoDataFrame
-        unmatched_gdf = gpd.GeoDataFrame(still_unmatched, geometry='point_geom', crs=adm1_shapes.crs)
-        
-        # Spatial join
-        spatial_matches = gpd.sjoin(
-            unmatched_gdf, 
-            final_df[['NAME_1', 'geometry']], 
-            how='inner', 
-            predicate='within'
-        )
-        
-        # Update final_df with spatial matches
-        for _, coord_row in spatial_matches.iterrows():
-            mask = final_df['NAME_1'] == coord_row['NAME_1']
-            final_df.loc[mask, 'admin1'] = coord_row['admin1']
-            final_df.loc[mask, 'longitude'] = coord_row['longitude']
-            final_df.loc[mask, 'latitude'] = coord_row['latitude']
-            final_df.loc[mask, 'match_method'] = 'spatial'
-        
-        matched_admin1.extend(spatial_matches['admin1'].tolist())
-    
-    # Step 4: Add all regions data including avg1 and total_forecast
-    
-    # Aggregate data for each admin1 (get max percentage and corresponding avg1/total_forecast)
-    all_regions_agg = all_regions_pd.loc[
-        all_regions_pd.groupby('admin1')['percent_increase1'].idxmax()
-    ][['admin1', 'percent_increase1', 'avg1', 'total_forecast']].reset_index(drop=True)
-    
-    # Merge all regions data
-    final_df = final_df.merge(
-        all_regions_agg, 
-        on='admin1', 
-        how='left'
-    )
-    
-    # Fill missing values
-    final_df['percent_increase1'] = final_df['percent_increase1'].fillna(0)
-    final_df['avg1'] = final_df['avg1'].fillna(0)
-    final_df['total_forecast'] = final_df['total_forecast'].fillna(0)
-    final_df['longitude'] = pd.to_numeric(final_df['longitude'], errors='coerce')
-    final_df['latitude'] = pd.to_numeric(final_df['latitude'], errors='coerce')
-    
-    
-    return final_df
-
-
-def create_visualization(final_merged_df: gpd.GeoDataFrame, country: str) -> go.Figure:
-    """
-    Create interactive choropleth map visualization.
-    
-    Args:
-        final_merged_df: Merged GeoDataFrame with all data
-        country: Country name
-    
-    Returns:
-        Plotly Figure object
-    """
-    merged = final_merged_df.copy()
-
-    # Custom color scale: blue → white → red
-    custom_scale = [
-        (0.00, "#5b9bd5"),   # blue
-        (0.50, "#ffffff"),   # white (center = 0%)
-        (1.00, "#d73600"),   # dark red
-    ]
-
-    min_val = merged["percent_increase1"].min()
-    max_val = merged["percent_increase1"].max()
-    abs_max = max(abs(min_val), abs(max_val))
-
-    # Create choropleth map
-    geojson = json.loads(merged.to_json())
-
-    fig = px.choropleth(
-        merged,
-        geojson=geojson,
-        locations="NAME_1",
-        featureidkey="properties.NAME_1",
-        color="percent_increase1",
-        color_continuous_scale=custom_scale,
-        range_color=(-abs_max, abs_max),  # Center the scale at 0
-        hover_name="NAME_1",
-        hover_data={
-            "percent_increase1": ":.1f",
-            "avg1": True,
-            "total_forecast": True,
-        },
-        labels={
-            "percent_increase1": "% Change in Conflict Risk ",
-            "avg1": "Average Observed Events Last Month ",
-            "total_forecast": "Total Forecasted Events Next Month "
-        },
-    )
-
-    fig.update_traces(
-        hovertemplate=(
-            "<b>%{hovertext}</b><br>"
-            "% Change in Conflict Risk: %{customdata[0]:.1f}%<br>"
-            "Average Observed Events Last Month: %{customdata[1]}<br>"
-            "Total Forecasted Events Next Month: %{customdata[2]}"
-            "<extra></extra>"  # hides the trace name box
-        )
-    )
-
-    # Add region labels
-    centroids = merged.copy()
-    centroids["pnt"] = centroids.representative_point()
-    centroids["lon"] = centroids.pnt.x
-    centroids["lat"] = centroids.pnt.y
-
-    # Build label text: name + % only if non-zero
-    centroids["label"] = np.where(
-        centroids["percent_increase1"] != 0,
-        centroids["NAME_1"] + "<br>" +
-        centroids["percent_increase1"].round(1).astype(str) + "%",
-        centroids["NAME_1"]  # just the name when value == 0
-    )
-
-    fig.add_trace(
-        go.Scattergeo(
-            lon=centroids["lon"],
-            lat=centroids["lat"],
-            text=centroids["label"],
-            mode="text",
-            textfont=dict(size=10, color="black"),
-            hoverinfo="skip",
-            showlegend=False,
-        )
-    )
-
-    # Layout tweaks
-    fig.update_geos(fitbounds="locations", visible=False)
-
-    fig.update_layout(
-        title=f"{country}: Conflict Risk Change by Region"
-              "<br><sub>Red = Increase, Blue = Decrease, White = No Change</sub>",
-        margin=dict(l=0, r=0, t=80, b=0),
-        coloraxis_colorbar=dict(
-            title=dict(text="% Change in<br>Conflict Risk", side="right")
-        )
-    )
-
-    return fig
-
-
-def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.Figure:
+def create_tabular_chart(all_regions, country):
     """
     Create a horizontal bar chart showing forecasted events data with percent_increase1, avg1, and total_forecast values.
     """
+    # Convert Polars DataFrame to pandas for visualization
+    df_pandas = all_regions.to_pandas()
+    
     # Filter only regions with data and sort by percent_increase1 descending
-    df_filtered = final_merged_df[
-        (final_merged_df['admin1'].notna()) & 
-        (final_merged_df['percent_increase1'] != 0)
+    df_filtered = df_pandas[
+        (df_pandas['admin1'].notna()) & 
+        (df_pandas['percent_increase1'] != 0)
     ].copy()
     
     if len(df_filtered) == 0:
@@ -508,6 +257,13 @@ def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
     forecast_values = df_sorted['total_forecast'].round(0).astype(int).tolist()
     average_values = df_sorted['avg1'].round(0).astype(int).tolist()
     percent_changes = df_sorted['percent_increase1'].round(1).tolist()
+    
+    # Create multi-line text labels
+    text_labels = []
+    for i, pct in enumerate(percent_changes):
+        avg_val = average_values[i]
+        forecast_val = forecast_values[i]
+        text_labels.append(f"<b>{pct}%</b><br>(from {avg_val} to {forecast_val})")
     
     # Create color mapping for bars
     colors = []
@@ -530,12 +286,12 @@ def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
         orientation='h',
         marker=dict(
             color=colors,
-            line=dict(color='black', width=0.5)
+            line=dict(color='white', width=0.5)
         ),
-        text=[f"{pct}%" for pct in percent_changes],
+        text=text_labels,
         textposition='outside',
-        textfont=dict(size=12, color='black'),
-        cliponaxis=False,  # Prevent cropping of labels
+        textfont=dict(size=10),  # Make bar labels bigger
+        cliponaxis=False,
         hovertemplate=(
             "<b>%{y}</b><br>"
             "Percent Change: %{x:.1f}%<br>"
@@ -547,30 +303,55 @@ def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
         name="Percent Change"
     ))
     
-    # Update layout with better spacing
-    fig.update_layout(
-        title=f"Forecasted Events for {country}<br>"
-              f"<sub>Relative to 1-Month Average</sub>",
-        xaxis_title="Percent Change (%)",
-        yaxis_title="Regions",
-        font=dict(size=10),
-        margin=dict(l=250, r=20, t=100, b=80),  # More left, less right margin
-        height=len(df_sorted) * 30,
-        paper_bgcolor='white',
-        plot_bgcolor='white',
-        showlegend=False
-    )
+    # Calculate dynamic height based on number of regions
+    num_regions = len(df_sorted)
+    bar_height = 50
+    if num_regions <= 5:
+        calculated_height = 100  # Fixed height for small n
+    else:
+        calculated_height = max(100, num_regions * bar_height)  # Usual scaling for larger n
+        
     
-    # Remove x-axis ticks and add space between y-labels and bars
+    # # Calculate x-axis range to provide more space for labels
+    # max_pct = max(abs(min(percent_changes)), abs(max(percent_changes)))
+    # x_range = [-max_pct * 1.3, max_pct * 1.8]  # Even more space on the right for multi-line labels
+    
+    x_range = [min(percent_changes)-150, max(percent_changes)+100]
+    
+    # Update axes with better formatting
     fig.update_xaxes(
-        showticklabels=False,
-        ticks="",
-        tickfont=dict(size=10)
+        showticklabels=True,
+        tickfont=dict(size=12),
+        showgrid=False,
+        gridcolor='lightgray'
     )
     
     fig.update_yaxes(
-        tickfont=dict(size=12),
-        ticksuffix="    "
+        tickfont=dict(size=11),
+        tickmode='linear',
+        showgrid=False,
+        side='left',
+        categoryorder='array',
+        categoryarray=admin_names  # Ensure proper ordering
+    )
+    
+    # Update layout with better spacing
+    fig.update_layout(
+        title=f"Predicted Violence Increase for {country} for the Next Month<br>"
+              f"<sub>(Number of Forecasted Events Relative to Last Month)</sub>",
+        xaxis_title="Percent Change (%)",
+        yaxis_title="Regions",
+        font=dict(size=10),
+        uniformtext_minsize=10,  # Ensures all bar labels are at least size 16 # Show even if they overflow
+        uniformtext_mode='show', # Show even if they overflow
+        margin=dict(l=180, r=150, t=120, b=80),  # Increased right margin for multi-line labels
+        height=calculated_height,
+        width=1000,  # Increased width to accommodate multi-line labels
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        showlegend=False,
+        xaxis=dict(range=x_range),  # Set x-axis range for more space
+        bargap=0.3
     )
     
     # Add vertical line at 0% (neutral line)
@@ -584,15 +365,14 @@ def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.
     return fig
 
 
-def save_visualizations(fig: go.Figure, bar_chart_fig: go.Figure, country: str, final_merged_df: gpd.GeoDataFrame):
+def save_visualizations(fig: go.Figure, country: str, hotspots):
     """
     Save the interactive plots in multiple formats.
     
     Args:
-        fig: Plotly choropleth map figure to save
-        bar_chart_fig: Plotly bar chart figure to save
+        fig: Plotly bar chart figure to save
         country: Country name
-        final_merged_df: Merged data for statistics
+        hotspots: Merged data for statistics (Polars DataFrame)
     """
     # Create output directory
     output_dir = Path(__file__).parent.parent.parent / 'data' / 'images'
@@ -601,36 +381,28 @@ def save_visualizations(fig: go.Figure, bar_chart_fig: go.Figure, country: str, 
     # Generate timestamp for unique filenames
     timestamp = datetime.now().strftime("%Y-%m-%d")
     
-    # Save choropleth map
-    map_base_filename = f"Map_{country.replace(' ', '_')}_{timestamp}"
-    
-    # Save as HTML (interactive)
-    html_file = output_dir / f"{map_base_filename}.html"
-    fig.write_html(html_file)
-
-    # Save as PDF (static, high quality)
-    pdf_file = output_dir / f"{map_base_filename}.pdf"
-    fig.write_image(pdf_file, width=1200, height=800)
-
-    # Save as SVG (vector format)
-    svg_file = output_dir / f"{map_base_filename}.svg"
-    fig.write_image(svg_file, width=1200, height=800)
-    
     # Save tabular chart
     table_base_filename = f"BarChart_{country.replace(' ', '_')}_{timestamp}"
     
-    # Save as HTML (interactive)
-    table_html_file = output_dir / f"{table_base_filename}.html"
-    bar_chart_fig.write_html(table_html_file)
+    try:
+        # Save as HTML (interactive)
+        table_html_file = output_dir / f"{table_base_filename}.html"
+        fig.write_html(table_html_file)
 
-    # Save as PDF (static, high quality)
-    table_pdf_file = output_dir / f"{table_base_filename}.pdf"
-    bar_chart_fig.write_image(table_pdf_file, width=800, height=max(400, len(final_merged_df) * 30 + 150))
+        # # Save as PDF (static, high quality)
+        # table_pdf_file = output_dir / f"{table_base_filename}.pdf"
+        # fig.write_image(table_pdf_file)
 
-    # Save as SVG (vector format)
-    table_svg_file = output_dir / f"{table_base_filename}.svg"
-    bar_chart_fig.write_image(table_svg_file, width=800, height=max(400, len(final_merged_df) * 30 + 150))
-    
+        # Save as SVG (vector format)
+        table_svg_file = output_dir / f"{table_base_filename}.svg"
+        fig.write_image(table_svg_file)
+
+    except Exception as e:
+        print(f"Error saving some visualization formats: {e}")
+        # At least save the HTML version
+        table_html_file = output_dir / f"{table_base_filename}.html"
+        fig.write_html(table_html_file)
+        print(f"Saved only HTML chart: {table_html_file}")
 
 
 def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regions: pl.DataFrame):
@@ -681,25 +453,6 @@ def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regi
     
 
 
-def save_data(final_merged_df: gpd.GeoDataFrame, country: str):
-    """
-    Save the processed data as parquet file.
-    
-    Args:
-        final_merged_df: Final merged data
-        country: Country name
-    """
-    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled_cast'
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Convert to regular DataFrame for parquet saving (remove geometry)
-    df_to_save = pd.DataFrame(final_merged_df.drop(columns=['geometry']))
-    
-    date = datetime.now().strftime('%Y-%m-%d')
-    output_path = output_dir / f"ACLED_CAST_{country}_{date}.parquet"
-    df_to_save.to_parquet(output_path)
-
-
 def main():
     """Main execution function."""
     try:
@@ -724,27 +477,13 @@ def main():
         # Step 3: Identify hotspots and regions
         hotspots, all_regions, hotspots_list = identify_hotspots_and_regions(cast_processed, window, horizon)
         
-        # Step 4: Get geographical data
-        load_dotenv(find_dotenv(), override=True)
-        email = os.getenv("ACLED_EMAIL")
-        api_key = os.getenv("ACLED_API_KEY")
-        
-        if not email or not api_key:
-            raise ValueError("ACLED credentials missing: set ACLED_EMAIL & ACLED_API_KEY environment variables.")
-        
-        coords = get_coordinates(country, email, api_key)
-        adm1_shapes = get_shapefile(country)
-        
-        # Step 5: Merge all data
-        final_merged_df = create_merged_mapping(coords, adm1_shapes, all_regions)
-        
-        # Step 6: Create visualizations
-        fig = create_visualization(final_merged_df, country)
-        bar_chart_fig = create_tabular_chart(final_merged_df, country)
+        # # Step 6: Create visualizations
+        fig = create_tabular_chart(all_regions, country)
         
         # Step 7: Save outputs
-        save_visualizations(fig, bar_chart_fig, country, final_merged_df)
-        save_data(final_merged_df, country)
+        save_visualizations(fig, country, hotspots)
+        # save_data(hotspots, country)
+        save_acled_cast(hotspots, country)
         save_hotspots_list(hotspots_list, country, horizon, all_regions)
         
         print("ACLED CAST JSON and visualizations saved.")
