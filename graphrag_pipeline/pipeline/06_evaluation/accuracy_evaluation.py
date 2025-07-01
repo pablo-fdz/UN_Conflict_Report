@@ -614,20 +614,35 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 response_rewritten_section = components['llm_rewriter'].invoke(rewrite_prompt)
                                 llm_usage += 1
                                 
-                                if response_rewritten_section:
-                                    response_rewritten_section_json = response_rewritten_section.parsed
+                                if response_rewritten_section and response_rewritten_section.parsed:
+                                    
+                                    parsed_data = response_rewritten_section.parsed
+                                    
+                                    # Convert Pydantic Citations objects to dictionaries
+                                    sources_as_dicts = [
+                                        {"number": cit.number, "full_source": cit.full_source}
+                                        for cit in parsed_data.source
+                                    ]
+
+                                    # Create the final dictionary for the section
+                                    section_dict = {
+                                        "title_section": parsed_data.title_section,
+                                        "corrected_content": parsed_data.corrected_content,
+                                        "sources": sources_as_dicts
+                                    }
                                     # The output here will be a dictionary with 3 items:
                                     # - "title_section": the title of the section
                                     # - "corrected_content": the rewritten content of the section
                                     # - "sources": list of dictionaries of the sources section of the report, where each dictionary has 'number' and 'full_source' keys
-                                    corrected_sections.append(response_rewritten_section_json)
-                        
+                                    corrected_sections.append(section_dict)
+                                
                         print(f"Rewritten {len(corrected_sections)} sections based on accuracy evaluation.")
                         print("First rewritten section content:", corrected_sections[0] if corrected_sections else "No sections rewritten")
 
                         # ----- Step 2: Aggregate Rewritten Sections into new report -----
                         
-                        if corrected_sections:
+                        if not corrected_sections:
+                            print("No sections were rewritten, skipping final report generation.")
                             continue  # Skip aggregation if no sections were rewritten
                         
                         print("Aggregating rewritten sections into a new report...")

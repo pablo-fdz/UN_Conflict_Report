@@ -257,7 +257,7 @@ class AccuracyEvaluator:
                 if unique_sources:
                     report_lines.append(f"**Sources:**")
                     for src in unique_sources:
-                        report_lines.append(f"- {src}")
+                        report_lines.append(f"> - {src}")
                 else:  # If there are no sources, indicate "N/A"
                     report_lines.append(f"**Source:** N/A")
             
