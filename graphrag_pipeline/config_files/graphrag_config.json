@@ -13,5 +13,11 @@
     "search_text": "Security events, conflicts, and political stability in {country}.",
     "query_text": "Generate a comprehensive security report for {country} based on the provided context. The report should cover recent events from the last year and offer a forward-looking perspective on the country's stability. Structure the report with a clear focus on key events, their impact, and the actors involved. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the context.",
     "examples": "",
-    "return_context": true
+    "return_context": true,
+    
+    "acled_cast": {
+        "country": "Iran",
+        "window": 1,
+        "horizon": 2
+  }
 }

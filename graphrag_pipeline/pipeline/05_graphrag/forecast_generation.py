@@ -20,8 +20,8 @@ from .graphrag_construction_pipeline import GraphRAGConstructionPipeline
 
 
 def load_config():
-    """Load configuration from data_ingestion_config.json"""
-    config_path = Path(__file__).parent.parent.parent / 'config_files' / 'data_ingestion_config.json'
+    """Load configuration from graphrag_config.json"""
+    config_path = Path(__file__).parent.parent.parent / 'config_files' / 'graphrag_config.json'
     try:
         return json.loads(config_path.read_text()).get('acled_cast', {})
     except FileNotFoundError:
