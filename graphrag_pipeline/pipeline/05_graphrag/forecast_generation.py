@@ -16,6 +16,7 @@ import polars as pl
 import requests
 from dateutil.relativedelta import relativedelta
 from dotenv import find_dotenv, load_dotenv
+from .graphrag_construction_pipeline import GraphRAGConstructionPipeline
 
 
 def load_config():
@@ -397,8 +398,8 @@ def create_tabular_chart(all_regions, country):
     
     # Update layout with better spacing
     fig.update_layout(
-        title=f"Predicted Violence Increase for {country} for the Next Month<br>"
-              f"<sub>(Number of Forecasted Events Relative to Last Month)</sub>",
+        #title=f"Predicted Violence Increase for {country} for the Next Month<br>"
+              f"Number of Forecasted Events Relative to Last Month",
         xaxis_title="Percent Change (%)",
         yaxis_title="Regions",
         font=dict(size=11, family="Arial, sans-serif"),
@@ -600,7 +601,7 @@ def plot_conflict_forecast(country: str):
         ))
 
         fig.update_layout(
-            title=f'Armed Conflict Probability Forecast - {country}',
+            #title=f'Armed Conflict Probability Forecast - {country}',
             xaxis_title='Date', yaxis_title='Conflict Probability',
             font=dict(size=12, family='Arial, sans-serif'), showlegend=False,
             width=900, height=500, paper_bgcolor='white', plot_bgcolor='white'
@@ -678,6 +679,21 @@ def save_linechart(fig: go.Figure, country: str):
 #------------- Main Execution Function -------------
 def main():
     """Main execution function."""
+    
+    
+    if country is None:
+        country = os.getenv('GRAPHRAG_COUNTRY')
+    
+    graphrag_construction_pipeline = GraphRAGConstructionPipeline()
+    default_output_directory = graphrag_construction_pipeline._get_default_output_directory(country=country)
+    if custom_output_directory is None:
+        custom_output_directory = os.getenv('GRAPHRAG_OUTPUT_DIR')
+    
+    if custom_output_directory:
+        output_dir = Path(custom_output_directory) / 'assets'
+    else:
+        output_dir = Path(default_output_directory) / 'assets'
+    
     try:
         # Load configuration
         config = load_config()
