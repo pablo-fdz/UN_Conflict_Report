@@ -17,7 +17,7 @@
         "llm_questions_config": {
             "model_name": "gemini-2.5-flash-lite-preview-06-17",
             "model_params": {
-                "temperature": 1.0,
+                "temperature": 0.5,
                 "response_mime_type": "application/json"
             },
             "max_requests_per_minute": 15

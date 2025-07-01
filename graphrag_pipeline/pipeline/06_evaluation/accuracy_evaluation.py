@@ -594,7 +594,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             # Check if the section title exists in the accuracy report sections
                             # This is to ensure that we only process sections that have been evaluated
                             # and that the section titles match between the original report and the accuracy report
-                            if section_title in sections_accuracy.items():
+                            if section_title in sections_accuracy:
 
                                 accuracy_content = sections_accuracy[section_title]  # Access the content of the section in the accuracy report
                                 
@@ -620,7 +620,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                     # - "title_section": the title of the section
                                     # - "corrected_content": the rewritten content of the section
                                     # - "sources": list of dictionaries of the sources section of the report, where each dictionary has 'number' and 'full_source' keys
-                                    corrected_sections.append({response_rewritten_section_json})
+                                    corrected_sections.append(response_rewritten_section_json)
                         
                         print(f"Rewritten {len(corrected_sections)} sections based on accuracy evaluation.")
                         print("First rewritten section content:", corrected_sections[0] if corrected_sections else "No sections rewritten")
@@ -666,7 +666,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         llm_usage += 1
 
                         if final_report_response:
-                            final_report_content = final_report_response.content.text  # Get the final report content from the LLM response
+                            final_report_content = final_report_response.content  # Get the final report content from the LLM response
                             # Save the final, corrected report
                             acc_evaluator.save_corrected_report(
                                 report_content=final_report_content,

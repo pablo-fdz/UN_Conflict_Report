@@ -239,14 +239,27 @@ class AccuracyEvaluator:
                     continue
                 conclusion = claim.get("conclusion", "error").upper()
                 justification = claim.get("justification")
-                source = claim.get("source", "N/A")  # Get the source of the claim, default to "N/A"
+
+                # Extract sources from the nested 'questions' dictionary
+                questions_and_answers = claim.get("questions", {})
+                sources = []  # Initialize an empty list to collect sources
+                if isinstance(questions_and_answers, dict):
+                    for answer_and_source in questions_and_answers.values():
+                        if isinstance(answer_and_source, list) and len(answer_and_source) > 1 and answer_and_source[1]:
+                            sources.append(answer_and_source[1])
+
+                unique_sources = sorted(list(set(sources)))
 
                 report_lines.append(f"\n### Claim {i+1}: {conclusion}")
                 report_lines.append(f"> {claim_text}")
                 if justification and conclusion in ["FALSE", "MIXTURE"]:
                     report_lines.append(f"**Justification:** {justification}")
-                if source:
-                    report_lines.append(f"**Source:** {source}")
+                if unique_sources:
+                    report_lines.append(f"**Sources:**")
+                    for src in unique_sources:
+                        report_lines.append(f"- {src}")
+                else:  # If there are no sources, indicate "N/A"
+                    report_lines.append(f"**Source:** N/A")
             
             report_lines.append("\n---")
 
