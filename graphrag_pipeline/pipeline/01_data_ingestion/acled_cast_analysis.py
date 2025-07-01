@@ -11,18 +11,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import geopandas as gpd
-import numpy as np
-import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
-import pycountry
 import requests
-import urllib.request
 from dateutil.relativedelta import relativedelta
 from dotenv import find_dotenv, load_dotenv
-from shapely.geometry import Point
 
 
 def load_config():
@@ -35,8 +28,9 @@ def load_config():
     except json.JSONDecodeError:
         raise ValueError(f"Error parsing configuration file at {config_path}")
 
+#------------- Get ACLED CAST Data -------------
 
-def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Optional[str] = None) -> pl.DataFrame:
+def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Optional[str] = None) -> Optional[pl.DataFrame]:
     """
     Retrieve ACLED CAST forecasting data for a specific country.
     
@@ -46,7 +40,7 @@ def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Opti
         api_key: ACLED API key
     
     Returns:
-        Polars DataFrame with CAST data
+        Polars DataFrame with CAST data or None if no data found
     """
     load_dotenv(find_dotenv(), override=True)
     
@@ -62,31 +56,51 @@ def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Opti
         "country": country,
     }
     
-    # GET request to ACLED CAST API
-    response = requests.get("https://api.acleddata.com/cast/read.csv", params=parameters, timeout=60)
-    response.raise_for_status()
-    
-    cast = pl.read_csv(io.BytesIO(response.content))
-    
-    # Filter for exact country match
-    cast = cast.filter(pl.col("country") == country)
-    
-    # Process month names to numbers
-    month_map = {
-        "January": 1, "February": 2, "March": 3, "April": 4,
-        "May": 5, "June": 6, "July": 7, "August": 8,
-        "September": 9, "October": 10, "November": 11, "December": 12,
-    }
-    
-    cast = (
-        cast.with_columns(pl.col("month").replace(month_map).alias("month_num"))
-        .with_columns(
-            (pl.col("year").cast(str) + "-" + pl.col("month_num").cast(str).str.zfill(2)).alias("year_month")
+    try:
+        # GET request to ACLED CAST API
+        response = requests.get("https://api.acleddata.com/cast/read.csv", params=parameters, timeout=60)
+        response.raise_for_status()
+        
+        cast = pl.read_csv(io.BytesIO(response.content))
+        
+        # Check if the API returned "No data has been found" 
+        if cast.columns == ["No data has been found"]:
+            return None
+            
+        # Check if 'country' column exists
+        if "country" not in cast.columns:
+            print(f"Warning: 'country' column not found in ACLED CAST data for {country}")
+            print(f"Available columns: {cast.columns}")
+            return None
+        
+        # Filter for exact country match
+        cast = cast.filter(pl.col("country") == country)
+        
+        # Check if any data remains after filtering
+        if cast.height == 0:
+            print(f"Warning: No ACLED CAST data found for {country} after filtering.")
+            return None
+        
+        # Process month names to numbers
+        month_map = {
+            "January": 1, "February": 2, "March": 3, "April": 4,
+            "May": 5, "June": 6, "July": 7, "August": 8,
+            "September": 9, "October": 10, "November": 11, "December": 12,
+        }
+        
+        cast = (
+            cast.with_columns(pl.col("month").replace(month_map).alias("month_num"))
+            .with_columns(
+                (pl.col("year").cast(str) + "-" + pl.col("month_num").cast(str).str.zfill(2)).alias("year_month")
+            )
+            .drop("month_num")
         )
-        .drop("month_num")
-    )
+        
+        return cast
     
-    return cast
+    except Exception as e:
+        print(f"Error retrieving ACLED CAST data for {country}: {str(e)}")
+        return None
 
 
 def create_rolling_averages(cast: pl.DataFrame) -> pl.DataFrame:
@@ -173,6 +187,7 @@ def calculate_percent_increase(cast_clean: pl.DataFrame) -> pl.DataFrame:
     
     return cast_clean
 
+#------------- Identify Hotspots -------------
 
 def identify_hotspots_and_regions(cast_clean: pl.DataFrame, window: int = 1, horizon: int = 2):
     """
@@ -231,6 +246,54 @@ def save_acled_cast(hotspots, country: str):
     output_path = output_dir / f"ACLED_CAST_{country}_{date}.parquet"
     df_to_save.to_parquet(output_path)
 
+#------------- Create Visuals -------------
+
+def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regions: pl.DataFrame):
+    """
+    Save the hotspots list with detailed information as a JSON file.
+    
+    Args:
+        hotspots_list: List of hotspot regions
+        country: Country name
+        horizon: Forecast horizon in months
+        all_regions: DataFrame with all regions data including metrics
+    """
+    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled_cast'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get detailed information for each hotspot region
+    hotspots_details = []
+    for region in hotspots_list:
+        # Filter data for this specific region and get the latest entry
+        region_data = all_regions.filter(pl.col("admin1") == region)
+        if region_data.height > 0:
+            # Get the row with max percent_increase1 for this region
+            region_sorted = region_data.sort("percent_increase1", descending=True)
+            region_row = region_sorted.head(1)
+            
+            hotspot_info = {
+                "name": region,
+                "avg1": float(region_row["avg1"][0]) if region_row["avg1"][0] is not None else 0.0,
+                "total_forecast": float(region_row["total_forecast"][0]) if region_row["total_forecast"][0] is not None else 0.0,
+                "percent_increase1": float(region_row["percent_increase1"][0]) if region_row["percent_increase1"][0] is not None else 0.0
+            }
+            hotspots_details.append(hotspot_info)
+    
+    # Create metadata for the JSON file
+    hotspots_data = {
+        "country": country,
+        "forecast_horizon_months": horizon,
+        "analysis_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "total_hotspots": len(hotspots_list),
+        "hotspot_regions": hotspots_details
+    }
+    
+    date = datetime.now().strftime('%Y-%m-%d')
+    output_path = output_dir / f"hotspots_{country.replace(' ', '_')}_{date}.json"
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(hotspots_data, f, indent=2, ensure_ascii=False)
+        
 
 def create_tabular_chart(all_regions, country):
     """
@@ -311,10 +374,6 @@ def create_tabular_chart(all_regions, country):
     calculated_height = max(50, num_regions * bar_height)  # Usual scaling for larger n
         
     
-    # # Calculate x-axis range to provide more space for labels
-    # max_pct = max(abs(min(percent_changes)), abs(max(percent_changes)))
-    # x_range = [-max_pct * 1.3, max_pct * 1.8]  # Even more space on the right for multi-line labels
-    
     x_range = [min(percent_changes)-350, max(percent_changes)+400]
     
     # Update axes with better formatting
@@ -366,7 +425,7 @@ def create_tabular_chart(all_regions, country):
     return fig
 
 
-def save_visualizations(fig: go.Figure, country: str, hotspots):
+def save_barchart(fig: go.Figure, country: str):
     """
     Save the interactive plots in multiple formats.
     
@@ -381,7 +440,7 @@ def save_visualizations(fig: go.Figure, country: str, hotspots):
 
     # Generate timestamp for unique filenames
     timestamp = datetime.now().strftime("%Y-%m-%d")
-    
+
     # Save tabular chart
     table_base_filename = f"BarChart_{country.replace(' ', '_')}_{timestamp}"
     
@@ -389,10 +448,6 @@ def save_visualizations(fig: go.Figure, country: str, hotspots):
         # Save as HTML (interactive)
         table_html_file = output_dir / f"{table_base_filename}.html"
         fig.write_html(table_html_file)
-
-        # # Save as PDF (static, high quality)
-        # table_pdf_file = output_dir / f"{table_base_filename}.pdf"
-        # fig.write_image(table_pdf_file)
 
         # Save as SVG (vector format)
         table_svg_file = output_dir / f"{table_base_filename}.svg"
@@ -404,56 +459,223 @@ def save_visualizations(fig: go.Figure, country: str, hotspots):
         table_html_file = output_dir / f"{table_base_filename}.html"
         fig.write_html(table_html_file)
         print(f"Saved only HTML chart: {table_html_file}")
+    
 
+#------------- Create Conflict Forecast Visuals ---------
 
-def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regions: pl.DataFrame):
+def plot_conflict_forecast(country: str):
     """
-    Save the hotspots list with detailed information as a JSON file.
+    Plot conflict probability forecast for a specific country with gradient colors.
+    """
+    import polars as pl
+    import requests
+    import pycountry
+    import plotly.graph_objects as go
+
+    # Improved ISO3 code lookup
+    def iso3(name):
+        name = name.lower().strip()
+        
+        # Handle common country name mappings first
+        country_mappings = {
+            'united states': 'USA',
+            'usa': 'USA',
+            'us': 'USA',
+            'america': 'USA',
+            'united states of america': 'USA',
+            'russia': 'RUS',
+            'russian federation': 'RUS',
+            'iran': 'IRN',
+            'south korea': 'KOR',
+            'north korea': 'PRK',
+            'uk': 'GBR',
+            'britain': 'GBR',
+            'great britain': 'GBR',
+            'united kingdom': 'GBR',
+        }
+        
+        if name in country_mappings:
+            return country_mappings[name]
+        
+        # Try exact matches first
+        try:
+            for country in pycountry.countries:
+                try:
+                    country_name_attr = getattr(country, 'name', '')
+                    official_name_attr = getattr(country, 'official_name', '')
+                    alpha_3_attr = getattr(country, 'alpha_3', '')
+                    
+                    names_to_check = [
+                        country_name_attr.lower() if country_name_attr else '',
+                        official_name_attr.lower() if official_name_attr else '',
+                        alpha_3_attr.lower() if alpha_3_attr else ''
+                    ]
+                    if name in names_to_check:
+                        return alpha_3_attr
+                except (AttributeError, TypeError):
+                    continue
+        except Exception:
+            pass
+        
+        # Then try substring matching (but prioritize shorter matches)
+        matches = []
+        try:
+            for country in pycountry.countries:
+                try:
+                    country_name_attr = getattr(country, 'name', '')
+                    official_name_attr = getattr(country, 'official_name', '')
+                    alpha_3_attr = getattr(country, 'alpha_3', '')
+                    
+                    names_to_check = [
+                        country_name_attr.lower() if country_name_attr else '',
+                        official_name_attr.lower() if official_name_attr else ''
+                    ]
+                    for country_name in names_to_check:
+                        if country_name and (name in country_name or country_name in name):
+                            matches.append((alpha_3_attr, len(country_name), country_name))
+                except (AttributeError, TypeError):
+                    continue
+        except Exception:
+            pass
+                
+        if matches:
+            # Sort by length to prefer shorter, more precise matches
+            matches.sort(key=lambda x: x[1])
+            return matches[0][0]
+            
+        print(f"Country '{name}' not found in ISO lookup.")
+        return None
+
+    try:
+        print("Fetching Conflict Forecast data...")
+        # Get latest file listing and find target file
+        files = requests.get(
+            "http://api.backendless.com/C177D0DC-B3D5-818C-FF1E-1CC11BC69600/C5F2917E-C2F6-4F7D-9063-69555274134E/services/fileService/get-latest-file-listing"
+        ).json()
+        file_url = next((f["publicUrl"] for f in files if f["name"] == "conflictforecast_ons_armedconf_03.csv"), None)
+        if not file_url:
+            raise ValueError("Target file not found.")
+
+        # Read and filter data
+        df = pl.read_csv(requests.get(file_url).content)
+        
+        iso = iso3(country)
+        if not iso:
+            raise ValueError(f"ISO code not found for {country}")
+        
+        df = df.filter(pl.col("isocode") == iso)
+        if df.height == 0:
+            raise ValueError(f"No data for {country}")
+
+        # Parse dates and filter
+        df = df.with_columns([
+            pl.col("period").cast(str).str.slice(0, 4).alias("year"),
+            pl.col("period").cast(str).str.slice(4, 6).alias("month"),
+        ])
+        df = df.with_columns([
+            (pl.col("year") + "-" + pl.col("month")).str.to_datetime("%Y-%m").alias("date")
+        ]).filter(pl.col("year").cast(int) >= 2020)
+        if df.height == 0:
+            raise ValueError(f"No data for {country} from 2020")
+
+        pdf = df.select(["date", "ons_armedconf_03_all"]).to_pandas()
+        x, y = pdf["date"], pdf["ons_armedconf_03_all"]
+        norm = (y - y.min()) / (y.max() - y.min())
+
+        fig = go.Figure()
+        # Add colored line segments
+        for i in range(len(x)-1):
+            c = int(255 * ((norm.iloc[i] + norm.iloc[i+1])/2))
+            fig.add_trace(go.Scatter(
+                x=[x.iloc[i], x.iloc[i+1]], y=[y.iloc[i], y.iloc[i+1]],
+                mode='lines', line=dict(color=f'rgb({c},0,{255-c})', width=2),
+                showlegend=False, hoverinfo='skip'
+            ))
+        # Last value label
+        fig.add_trace(go.Scatter(
+            x=[x.iloc[-1]], y=[y.iloc[-1]], mode='markers+text',
+            marker=dict(color='darkred', size=8),
+            text=[f'{y.iloc[-1]:.2f}'], textposition='top right',
+            textfont=dict(size=12, color='darkred'), showlegend=False
+        ))
+
+        fig.update_layout(
+            title=f'Armed Conflict Probability Forecast - {country}',
+            xaxis_title='Date', yaxis_title='Conflict Probability',
+            font=dict(size=12, family='Arial, sans-serif'), showlegend=False,
+            width=900, height=500, paper_bgcolor='white', plot_bgcolor='white'
+        )
+        fig.update_xaxes(
+            showgrid=True, gridcolor='lightgray', gridwidth=1,
+            dtick="M3", tickformat="%b", tickangle=45, automargin=True
+        )
+        fig.update_yaxes(showgrid=True, gridcolor='lightgray', gridwidth=0.5, automargin=True)
+        
+        # Add custom year annotations
+        years = pdf["date"].dt.year.unique()
+        for year in sorted(years):
+            # Find the first date of each year in the data
+            year_data = pdf[pdf["date"].dt.year == year]
+            if not year_data.empty:
+                first_date = year_data["date"].min()
+                fig.add_annotation(
+                    x=first_date,
+                    y=pdf["ons_armedconf_03_all"].min()-(((pdf["ons_armedconf_03_all"].max())-(pdf["ons_armedconf_03_all"].min()))*0.1),  # Position below the plot
+                    text=str(year),
+                    showarrow=False,
+                    font=dict(size=12),
+                    xanchor="left"
+                )
+        
+        return fig
+
+    except Exception as e:
+        print(f"Error in plot_conflict_forecast: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+    
+    
+def save_linechart(fig: go.Figure, country: str):
+    """
+    Save the interactive plots in multiple formats.
     
     Args:
-        hotspots_list: List of hotspot regions
+        fig: Plotly line chart figure to save
         country: Country name
-        horizon: Forecast horizon in months
-        all_regions: DataFrame with all regions data including metrics
     """
-    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled_cast'
+    # Check if figure is None
+    if fig is None:
+        print(f"Warning: No conflict forecast figure to save for {country}. Skipping line chart save.")
+        return
+    
+    # Create output directory
+    output_dir = Path(__file__).parent.parent.parent / 'data' / 'images'
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Get detailed information for each hotspot region
-    hotspots_details = []
-    for region in hotspots_list:
-        # Filter data for this specific region and get the latest entry
-        region_data = all_regions.filter(pl.col("admin1") == region)
-        if region_data.height > 0:
-            # Get the row with max percent_increase1 for this region
-            region_sorted = region_data.sort("percent_increase1", descending=True)
-            region_row = region_sorted.head(1)
-            
-            hotspot_info = {
-                "name": region,
-                "avg1": float(region_row["avg1"][0]) if region_row["avg1"][0] is not None else 0.0,
-                "total_forecast": float(region_row["total_forecast"][0]) if region_row["total_forecast"][0] is not None else 0.0,
-                "percent_increase1": float(region_row["percent_increase1"][0]) if region_row["percent_increase1"][0] is not None else 0.0
-            }
-            hotspots_details.append(hotspot_info)
-    
-    # Create metadata for the JSON file
-    hotspots_data = {
-        "country": country,
-        "forecast_horizon_months": horizon,
-        "analysis_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "total_hotspots": len(hotspots_list),
-        "hotspot_regions": hotspots_details
-    }
-    
-    date = datetime.now().strftime('%Y-%m-%d')
-    output_path = output_dir / f"hotspots_{country.replace(' ', '_')}_{date}.json"
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(hotspots_data, f, indent=2, ensure_ascii=False)
-    
 
+    # Generate timestamp for unique filenames
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    
+    # Save tabular chart
+    linechart_filename = f"LineChart_{country.replace(' ', '_')}_{timestamp}"
+    
+    try:
+        # Save as HTML (interactive)
+        line_html_file = output_dir / f"{linechart_filename}.html"
+        fig.write_html(line_html_file)
 
+        # Save as SVG (vector format)
+        table_svg_file = output_dir / f"{linechart_filename}.svg"
+        fig.write_image(table_svg_file)
+
+    except Exception as e:
+        print(f"Error saving some visualization formats: {e}")
+        # At least save the HTML version
+        line_html_file = output_dir / f"{linechart_filename}.html"
+        fig.write_html(line_html_file)
+        print("Saved only HTML chart for ConfForecast")
+
+#------------- Main Execution Function -------------
 def main():
     """Main execution function."""
     try:
@@ -471,23 +693,37 @@ def main():
         # Step 1: Get CAST data
         cast_data = get_acled_cast_data(country)
         
-        # Step 2: Process data
+        if cast_data is None:
+            print(f"No ACLED CAST data available for {country}.")
+            # Only plot conflict forecast if CAST data is not available
+            fig_cf = plot_conflict_forecast(country)
+            if fig_cf is not None:
+                save_linechart(fig_cf, country)
+                print("Conflict forecast visualization saved.")
+            else:
+                print("Conflict forecast plotting failed.")
+            return
+        
+        # Step 2: Process data (only if CAST data is available)
         cast_with_averages = create_rolling_averages(cast_data)
         cast_processed = calculate_percent_increase(cast_with_averages)
         
         # Step 3: Identify hotspots and regions
         hotspots, all_regions, hotspots_list = identify_hotspots_and_regions(cast_processed, window, horizon)
         
-        # # Step 6: Create visualizations
-        fig = create_tabular_chart(all_regions, country)
+        # Step 4: Create visualizations
+        fig_cast = create_tabular_chart(all_regions, country)
+        fig_cf = plot_conflict_forecast(country)
         
-        # Step 7: Save outputs
-        save_visualizations(fig, country, hotspots)
-        # save_data(hotspots, country)
+        # Step 5: Save outputs
+        if fig_cast is not None:
+            save_barchart(fig_cast, country)
+        if fig_cf is not None:
+            save_linechart(fig_cf, country)
         save_acled_cast(hotspots, country)
         save_hotspots_list(hotspots_list, country, horizon, all_regions)
         
-        print("ACLED CAST JSON and visualizations saved.")
+        print("JSON with hotspots and visualizations saved.")
         
     except Exception as e:
         print(f"Error during ACLED CAST analysis: {str(e)}")
