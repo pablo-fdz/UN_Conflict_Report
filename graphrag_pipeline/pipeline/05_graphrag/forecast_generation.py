@@ -684,7 +684,7 @@ def main():
         if not config:
             raise ValueError("Failed to load configuration. Aborting analysis.")
         
-        country = config.get('country')
+        # country = config.get('country')
         window = config.get('window', 1)
         horizon = config.get('horizon', 2)
         
@@ -726,7 +726,7 @@ def main():
         print("JSON with hotspots and visualizations saved.")
         
     except Exception as e:
-        print(f"Error during ACLED CAST analysis: {str(e)}")
+        print(f"Error during running analysis: {str(e)}")
         raise
 
 
