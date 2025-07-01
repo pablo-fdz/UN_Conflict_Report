@@ -249,11 +249,12 @@ class GraphRAGConstructionPipeline:
         except Exception as e:
             raise RuntimeError(f"Error saving markdown file to {filepath}: {e}")
         
+        context_filepath = None  # Initialize context filepath as None
         # Save context to a separate file if provided
         if context:
             context_dir = os.path.join(output_directory, 'context')
             os.makedirs(context_dir, exist_ok=True)
-            context_filename = f"context_{filename}"
+            context_filename = f"context_{os.path.splitext(filename)[0]}.json" # Use the report filename without extension and add .json
             context_filepath = os.path.join(context_dir, context_filename)
             try:
                 context_items = context.items  # Get the items from the RetrieverResult (list of `content` and `metadata` for each retrieved result)
@@ -271,7 +272,7 @@ class GraphRAGConstructionPipeline:
                     'retrieved_results': retrieved_results  # List of retrieved results with content and metadata
                 }
                 with open(context_filepath, 'w', encoding='utf-8') as f:
-                    f.write(context_json)
+                    json.dump(context_json, f, indent=4) # Use json.dump to write the dictionary as JSON
             except Exception as e:
                 # Log or print a warning instead of raising an error to not stop the main report generation
                 print(f"Warning: Could not save context file to {context_filepath}: {e}")
