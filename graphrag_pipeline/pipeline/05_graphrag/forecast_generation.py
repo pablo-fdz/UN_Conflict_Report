@@ -439,26 +439,26 @@ def save_barchart(fig: go.Figure, country: str):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate timestamp for unique filenames
-    timestamp = datetime.now().strftime("%Y-%m-%d")
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
     # Save tabular chart
     table_base_filename = f"BarChart_{country.replace(' ', '_')}_{timestamp}"
     
     try:
-        # Save as HTML (interactive)
-        table_html_file = output_dir / f"{table_base_filename}.html"
-        fig.write_html(table_html_file)
+        # # Save as HTML (interactive)
+        # table_html_file = output_dir / f"{table_base_filename}.html"
+        # fig.write_html(table_html_file)
 
         # Save as SVG (vector format)
         table_svg_file = output_dir / f"{table_base_filename}.svg"
         fig.write_image(table_svg_file)
 
     except Exception as e:
-        print(f"Error saving some visualization formats: {e}")
-        # At least save the HTML version
-        table_html_file = output_dir / f"{table_base_filename}.html"
-        fig.write_html(table_html_file)
-        print(f"Saved only HTML chart: {table_html_file}")
+        print(f"Error saving visualizations: {e}")
+        # # At least save the HTML version
+        # table_html_file = output_dir / f"{table_base_filename}.html"
+        # fig.write_html(table_html_file)
+        # print(f"Saved only HTML chart: {table_html_file}")
     
 
 #------------- Create Conflict Forecast Visuals ---------
@@ -654,26 +654,26 @@ def save_linechart(fig: go.Figure, country: str):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate timestamp for unique filenames
-    timestamp = datetime.now().strftime("%Y-%m-%d")
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     
     # Save tabular chart
     linechart_filename = f"LineChart_{country.replace(' ', '_')}_{timestamp}"
     
     try:
-        # Save as HTML (interactive)
-        line_html_file = output_dir / f"{linechart_filename}.html"
-        fig.write_html(line_html_file)
+        # # Save as HTML (interactive)
+        # line_html_file = output_dir / f"{linechart_filename}.html"
+        # fig.write_html(line_html_file)
 
         # Save as SVG (vector format)
         table_svg_file = output_dir / f"{linechart_filename}.svg"
         fig.write_image(table_svg_file)
 
     except Exception as e:
-        print(f"Error saving some visualization formats: {e}")
-        # At least save the HTML version
-        line_html_file = output_dir / f"{linechart_filename}.html"
-        fig.write_html(line_html_file)
-        print("Saved only HTML chart for ConfForecast")
+        print(f"Error saving visualizations: {e}")
+        # # At least save the HTML version
+        # line_html_file = output_dir / f"{linechart_filename}.html"
+        # fig.write_html(line_html_file)
+        # print("Saved only HTML chart for ConfForecast")
 
 #------------- Main Execution Function -------------
 def main():
