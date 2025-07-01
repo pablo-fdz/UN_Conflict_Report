@@ -71,3 +71,30 @@ class EvaluationResults(BaseModel):
     justification: str = Field(
         description="A detailed explanation of the evaluation conclusion, including the reasoning behind it. This field is REQUIRED if the conclusion is 'false' or 'mixture'. If the conclusion is 'true', this field can be an empty string."
         )
+
+class Citations(BaseModel):
+    """
+    Represents a source of information.
+    This model contains the number of the source and the full source string.
+    """
+    number: int = Field(
+        description="The number of the source, which is used for citation purposes."
+    )
+    full_source: str = Field(
+        description="The full source string, formatted as `<author or newspaper>: <URL or reference to a document>`."
+    )
+
+class RewriteSectionResults(BaseModel):
+    """
+    Represents the results of a rewrite section.
+    This model contains the rewritten section and its source.
+    """
+    title_section: str = Field(
+         description="The title of the original section."
+    )
+    corrected_content: str = Field(
+        description="The full, rewritten text for the section with footnote citations."
+    )
+    source: List[Citations] = Field(
+        description="A list of dictionary objects with numbers of the citation as keys and full sources as values."
+    )
