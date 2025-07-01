@@ -242,9 +242,11 @@ def initialize_components(configs, gemini_api_key):
     questions_rpm = evaluation_config['accuracy_evaluation']['llm_questions_config'].get('max_requests_per_minute', 20)
     graphrag_rpm = evaluation_config['graphrag']['llm_config'].get('max_requests_per_minute', 20)
     evaluator_rpm = evaluation_config['accuracy_evaluation']['llm_evaluator_config'].get('max_requests_per_minute', 20)
+    rewriter_rpm = evaluation_config['rewrite_config']['llm_rewriter_config'].get('max_requests_per_minute', 20)
+    aggregator_rpm = evaluation_config['rewrite_config']['llm_aggregator_config'].get('max_requests_per_minute', 20)
 
     # Use the lowest rate limit for all calls to be safe
-    min_rpm = min(claims_rpm, questions_rpm, graphrag_rpm, evaluator_rpm)
+    min_rpm = min(claims_rpm, questions_rpm, graphrag_rpm, evaluator_rpm, rewriter_rpm, aggregator_rpm)
     
     # Subtract 20% for safety, as Google does not guarantee exact rate limits
     safe_rpm = round(min_rpm - min_rpm * 0.2)
