@@ -139,7 +139,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
         # Apply sampling if specified
         if sample_size:
             original_size = len(df)
-            df = df.sample(sample_size)
+            df = df.head(sample_size)
             print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
         
         # Convert date column to string format for metadata
@@ -167,7 +167,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
     }
 
     # Run the KG pipeline with the loaded data
-    print("Using SpaCySemanticMatchResolver with similarity threshold: 0.999")
+    print("Using SpaCySemanticMatchResolver with similarity threshold: 0.99")
     
     results = await kg_pipeline.run_async(
         df=df,
