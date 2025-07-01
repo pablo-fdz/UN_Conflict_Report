@@ -883,12 +883,6 @@ Few-shot examples to guide the LLM's output format.
 "Claim: \"The UN has reported a significant increase in the number of internally displaced persons (IDPs) in Country X due to ongoing conflicts.\"\nQuestions: [\"What is the current number of IDPs in Country X?\", \"What are the main causes of the increase in IDPs in Country X?\", \"How does the current situation compare to previous years?\"]\n\nExample output: {\"What is the current number of IDPs in Country X?\": \"Not enough information to answer this question.\", \"What are the main causes of the increase in IDPs in Country X?\": \"Ongoing conflicts and violence.\", \"How does the current situation compare to previous years?\": \"There has been a significant increase compared to previous years.\"}"
 ```
 
-#### *return_context*
-
-If `true`, the context used to generate the report will be saved alongside the report itself.
-
-*Recommended value*: set to `true`. This is invaluable for debugging, verification, and understanding why the LLM included certain information in its report.
-
 ### rewrite_config
 
 #### *enabled*
