@@ -242,6 +242,8 @@ def create_tabular_chart(all_regions, country):
     # Filter only regions with data and sort by percent_increase1 descending
     df_filtered = df_pandas[
         (df_pandas['admin1'].notna()) & 
+        (df_pandas['total_forecast'] != 0) |
+        (df_pandas['avg1'] != 0) |
         (df_pandas['percent_increase1'] != 0)
     ].copy()
     
@@ -263,7 +265,7 @@ def create_tabular_chart(all_regions, country):
     for i, pct in enumerate(percent_changes):
         avg_val = average_values[i]
         forecast_val = forecast_values[i]
-        text_labels.append(f"<b>{pct}%</b><br>(from {avg_val} to {forecast_val})")
+        text_labels.append(f"<b>{pct}%</b>   (from {avg_val} to {forecast_val})")
     
     # Create color mapping for bars
     colors = []
@@ -306,33 +308,32 @@ def create_tabular_chart(all_regions, country):
     # Calculate dynamic height based on number of regions
     num_regions = len(df_sorted)
     bar_height = 50
-    if num_regions <= 5:
-        calculated_height = 100  # Fixed height for small n
-    else:
-        calculated_height = max(100, num_regions * bar_height)  # Usual scaling for larger n
+    calculated_height = max(50, num_regions * bar_height)  # Usual scaling for larger n
         
     
     # # Calculate x-axis range to provide more space for labels
     # max_pct = max(abs(min(percent_changes)), abs(max(percent_changes)))
     # x_range = [-max_pct * 1.3, max_pct * 1.8]  # Even more space on the right for multi-line labels
     
-    x_range = [min(percent_changes)-150, max(percent_changes)+100]
+    x_range = [min(percent_changes)-350, max(percent_changes)+400]
     
     # Update axes with better formatting
     fig.update_xaxes(
         showticklabels=True,
         tickfont=dict(size=12),
         showgrid=False,
-        gridcolor='lightgray'
+        gridcolor='lightgray',
+        automargin=True
     )
-    
+
     fig.update_yaxes(
-        tickfont=dict(size=11),
+        tickfont=dict(size=12),
         tickmode='linear',
         showgrid=False,
         side='left',
         categoryorder='array',
-        categoryarray=admin_names  # Ensure proper ordering
+        categoryarray=admin_names,
+        automargin=True# Ensure proper ordering
     )
     
     # Update layout with better spacing
@@ -341,12 +342,12 @@ def create_tabular_chart(all_regions, country):
               f"<sub>(Number of Forecasted Events Relative to Last Month)</sub>",
         xaxis_title="Percent Change (%)",
         yaxis_title="Regions",
-        font=dict(size=10),
-        uniformtext_minsize=10,  # Ensures all bar labels are at least size 16 # Show even if they overflow
+        font=dict(size=11, family="Arial, sans-serif"),
+        uniformtext_minsize=12,  # Ensures all bar labels are at least size 12
         uniformtext_mode='show', # Show even if they overflow
-        margin=dict(l=180, r=150, t=120, b=80),  # Increased right margin for multi-line labels
+        margin=dict(l=20, r=0, t=120, b=80),  # Increased right margin for multi-line labels
         height=calculated_height,
-        width=1000,  # Increased width to accommodate multi-line labels
+        width=2000,  # Increased width to accommodate multi-line labels
         paper_bgcolor='white',
         plot_bgcolor='white',
         showlegend=False,
