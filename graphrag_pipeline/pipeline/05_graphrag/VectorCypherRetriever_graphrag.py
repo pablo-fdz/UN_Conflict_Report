@@ -79,15 +79,16 @@ async def main(country: str = None, output_directory: str = None):
         )
         
         # Run GraphRAG with this retriever
-        answer = await graphrag_pipeline.run_async(
+        answer, context = await graphrag_pipeline.run_async(
             retriever=retriever,
             retriever_search_params=retrieval_config[f'{retriever_type}Retriever'].get('search_params', None),  # Search parameters for the retriever (if not provided, default parameters will be used)
             country=country  # Country to generate report for
         )
         
         # Save to markdown - if no output_directory provided, will use default structure
-        filepath = graphrag_pipeline.save_report_to_markdown(
+        filepath, context_filepath = graphrag_pipeline.save_report_to_markdown(
             answer=answer,
+            context=context,  # Context used for generating the answer, can be None if not provided
             output_directory=output_directory,  # Can be None, in which case the report will be saved to the default output directory
             filename=None,  # If None, the filename will be generated based on the country and retriever type
             country=country,
