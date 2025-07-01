@@ -1,0 +1,66 @@
+{
+  "text_splitter_config": {
+    "chunk_size": 100000,
+    "chunk_overlap": 1000
+  },
+  "embedder_config": {
+    "model_name": "all-MiniLM-L6-v2",
+    "model_params": {}
+  },
+  "llm_config": {
+    "model_name": "gemini-2.5-pro-preview-05-06",
+    "model_params": {
+      "temperature": 0.0
+    }
+  },
+  "schema_config": {
+    "create_schema": true,
+    "nodes":
+        {"label": "Location",
+        "properties_mapping": {
+            "name": "Name",
+            "admin 1": "Admin1",
+            "country": "Country"
+        },
+        "description": "For each row in the DataFrame, create a node with the label 'Location'. The node should have three properties: 'name', 'admin 1', and 'country'. These should be populated with the values from the DataFrame columns 'Name', 'Admin1', and 'Country' respectively."
+    },
+    "enforce_schema": "NONE"
+  },
+  "prompt_template_config": {
+    "use_default": false,
+    "template": "For each row in the DataFrame, create a node with the label 'Location'. Do not create nodes for Document and Text chunk. The node should have three properties: 'name', 'admin 1', and 'country'. These should be populated with the values from the DataFrame columns 'Name', 'Admin1', and 'Country' respectively."
+  },
+  "examples_config": {
+    "pass_examples": false,
+    "examples": []
+  },
+  "entity_resolution_config": {
+    "use_resolver": true,
+    "resolver": "SpaCySemanticMatchResolver",
+    "SinglePropertyExactMatchResolver_config": {
+      "filter_query": null,
+      "resolve_property": "name"
+    },
+    "FuzzyMatchResolver_config": {
+      "filter_query": null,
+      "resolve_properties": ["name"],
+      "similarity_threshold": 0.8
+    },
+    "SpaCySemanticMatchResolver_config": {
+      "filter_query": null,
+      "resolve_properties": ["name"],
+      "spacy_model": "en_core_web_lg",
+      "similarity_threshold": 0.8
+    },
+    "use_ex_post_resolver": false,
+    "ex_post_resolver": "SinglePropertyExactMatchResolver"
+  },
+  "debug_config": {
+    "enable_logging": true
+  },
+  "dev_settings": {
+    "on_error": "RAISE",
+    "batch_size": 1000,
+    "max_concurrency": 5
+  }
+}
