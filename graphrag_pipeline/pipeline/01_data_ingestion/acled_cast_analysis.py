@@ -11,18 +11,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import geopandas as gpd
-import numpy as np
-import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
-import pycountry
 import requests
-import urllib.request
 from dateutil.relativedelta import relativedelta
 from dotenv import find_dotenv, load_dotenv
-from shapely.geometry import Point
 
 
 def load_config():
@@ -35,8 +28,9 @@ def load_config():
     except json.JSONDecodeError:
         raise ValueError(f"Error parsing configuration file at {config_path}")
 
+#------------- Get ACLED CAST Data -------------
 
-def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Optional[str] = None) -> pl.DataFrame:
+def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Optional[str] = None) -> Optional[pl.DataFrame]:
     """
     Retrieve ACLED CAST forecasting data for a specific country.
     
@@ -46,7 +40,7 @@ def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Opti
         api_key: ACLED API key
     
     Returns:
-        Polars DataFrame with CAST data
+        Polars DataFrame with CAST data or None if no data found
     """
     load_dotenv(find_dotenv(), override=True)
     
@@ -62,28 +56,51 @@ def get_acled_cast_data(country: str, email: Optional[str] = None, api_key: Opti
         "country": country,
     }
     
-    # GET request to ACLED CAST API
-    response = requests.get("https://api.acleddata.com/cast/read.csv", params=parameters, timeout=60)
-    response.raise_for_status()
-    
-    cast = pl.read_csv(io.BytesIO(response.content))
-    
-    # Process month names to numbers
-    month_map = {
-        "January": 1, "February": 2, "March": 3, "April": 4,
-        "May": 5, "June": 6, "July": 7, "August": 8,
-        "September": 9, "October": 10, "November": 11, "December": 12,
-    }
-    
-    cast = (
-        cast.with_columns(pl.col("month").replace(month_map).alias("month_num"))
-        .with_columns(
-            (pl.col("year").cast(str) + "-" + pl.col("month_num").cast(str).str.zfill(2)).alias("year_month")
+    try:
+        # GET request to ACLED CAST API
+        response = requests.get("https://api.acleddata.com/cast/read.csv", params=parameters, timeout=60)
+        response.raise_for_status()
+        
+        cast = pl.read_csv(io.BytesIO(response.content))
+        
+        # Check if the API returned "No data has been found" 
+        if cast.columns == ["No data has been found"]:
+            return None
+            
+        # Check if 'country' column exists
+        if "country" not in cast.columns:
+            print(f"Warning: 'country' column not found in ACLED CAST data for {country}")
+            print(f"Available columns: {cast.columns}")
+            return None
+        
+        # Filter for exact country match
+        cast = cast.filter(pl.col("country") == country)
+        
+        # Check if any data remains after filtering
+        if cast.height == 0:
+            print(f"Warning: No ACLED CAST data found for {country} after filtering.")
+            return None
+        
+        # Process month names to numbers
+        month_map = {
+            "January": 1, "February": 2, "March": 3, "April": 4,
+            "May": 5, "June": 6, "July": 7, "August": 8,
+            "September": 9, "October": 10, "November": 11, "December": 12,
+        }
+        
+        cast = (
+            cast.with_columns(pl.col("month").replace(month_map).alias("month_num"))
+            .with_columns(
+                (pl.col("year").cast(str) + "-" + pl.col("month_num").cast(str).str.zfill(2)).alias("year_month")
+            )
+            .drop("month_num")
         )
-        .drop("month_num")
-    )
+        
+        return cast
     
-    return cast
+    except Exception as e:
+        print(f"Error retrieving ACLED CAST data for {country}: {str(e)}")
+        return None
 
 
 def create_rolling_averages(cast: pl.DataFrame) -> pl.DataFrame:
@@ -170,36 +187,35 @@ def calculate_percent_increase(cast_clean: pl.DataFrame) -> pl.DataFrame:
     
     return cast_clean
 
+#------------- Identify Hotspots -------------
 
 def identify_hotspots_and_regions(cast_clean: pl.DataFrame, window: int = 1, horizon: int = 2):
     """
-    Identify hotspots and get all regions for the specified horizon.
+    Identify hotspots and get all regions for the last month of the specified horizon.
     
     Args:
         cast_clean: Processed CAST data
         window: Number of past months to calculate average
-        horizon: Number of months ahead to check for hotspots
+        horizon: Number of months ahead to check for hotspots (will use the last month only)
     
     Returns:
-        Tuple of (hotspots DataFrame, all_regions DataFrame)
+        Tuple of (hotspots DataFrame, all_regions DataFrame, hotspots_list)
     """
     hot_col = f"hotspot{window}"
     
-    # Get current month and calculate target months
+    # Get current month and calculate the target month (last month of horizon)
     current_date = datetime.now()
-    months_to_check = []
-    for i in range(horizon):
-        check_date = current_date + relativedelta(months=i)
-        months_to_check.append(check_date.strftime("%Y-%m"))
+    target_month = current_date + relativedelta(months=horizon-1)
+    target_month_str = target_month.strftime("%Y-%m")
 
-    # Filter hotspots (hotspot1 == 1 and in the next 2 months)
+    # Filter hotspots (hotspot1 == 1 and in the target month only)
     hotspots = cast_clean.filter(
-        (pl.col("year_month").is_in(months_to_check)) & (pl.col(hot_col) == 1)
+        (pl.col("year_month") == target_month_str) & (pl.col(hot_col) == 1)
     )
 
-    # Get all regions for the same time period
+    # Get all regions for the target month only
     all_regions = cast_clean.filter(
-        pl.col("year_month").is_in(months_to_check)
+        pl.col("year_month") == target_month_str
     )
 
     hotspots_list = hotspots["admin1"].unique().to_list()
@@ -207,431 +223,30 @@ def identify_hotspots_and_regions(cast_clean: pl.DataFrame, window: int = 1, hor
     return hotspots, all_regions, hotspots_list
 
 
-def get_coordinates(country: str, email: str, api_key: str) -> pl.DataFrame:
+def save_acled_cast(hotspots, country: str):
     """
-    Get coordinates for admin1 regions from ACLED API.
+    Save the processed data as parquet file.
     
     Args:
+        hotspots: Processed hotspots DataFrame (Polars)
         country: Country name
-        email: ACLED API email
-        api_key: ACLED API key
-    
-    Returns:
-        DataFrame with admin1 coordinates
     """
-    parameters = {
-        "email": email,
-        "key": api_key,
-        "country": country,
-        "fields": "admin1|longitude|latitude",
-        "limit": 0
-    }
-
-    url = "https://api.acleddata.com/acled/read.csv"
-    response = requests.get(url, params=parameters, timeout=60)
-    response.raise_for_status()
-
-    coords = pl.read_csv(io.BytesIO(response.content))
-    coords = coords.group_by("admin1").agg([
-        pl.col("longitude").mean().alias("longitude"),
-        pl.col("latitude").mean().alias("latitude"),
-    ])
-    return coords
-
-
-def get_shapefile(country: str) -> gpd.GeoDataFrame:
-    """
-    Download and load country shapefile from GADM.
-    
-    Args:
-        country: Country name
-    
-    Returns:
-        GeoDataFrame with admin1 shapes
-    """
-    # Get ISO-3 code for the country
-    iso3 = pycountry.countries.lookup(country).alpha_3
-
-    # Download GADM level-1 shapefile if not cached
-    zip_url = f"https://geodata.ucdavis.edu/gadm/gadm4.1/shp/gadm41_{iso3}_shp.zip"
-    zip_path = Path(f"gadm41_{iso3}.zip")
-    if not zip_path.exists():
-        with urllib.request.urlopen(zip_url) as resp:
-            zip_path.write_bytes(resp.read())
-
-    # Read the level-1 layer directly from the zip
-    layer = f"gadm41_{iso3}_1"
-    adm1_shapes = gpd.read_file(f"zip://{zip_path}!{layer}.shp")
-    return adm1_shapes
-
-
-def create_merged_mapping(coords: pl.DataFrame, adm1_shapes: gpd.GeoDataFrame, 
-                         all_regions: pl.DataFrame) -> gpd.GeoDataFrame:
-    """
-    Streamlined pipeline to merge coordinates, admin shapes, and all regions data.
-    
-    Args:
-        coords: Coordinates DataFrame
-        adm1_shapes: Admin1 shapes GeoDataFrame
-        all_regions: All regions DataFrame with conflict data
-    
-    Returns:
-        Merged GeoDataFrame ready for visualization
-    """
-    # Convert Polars coords to pandas for easier merging
-    coords_pd = coords.to_pandas()
-    all_regions_pd = all_regions.to_pandas()
-    
-    # Start with the admin1 shapes as base and initialize empty columns
-    final_df = adm1_shapes.copy()
-    final_df['admin1'] = None
-    final_df['longitude'] = None
-    final_df['latitude'] = None
-    final_df['match_method'] = None
-    
-    # Step 1: Direct name matching (NAME_1)
-    
-    name1_matches = coords_pd.merge(
-        final_df[['NAME_1']], 
-        left_on="admin1", 
-        right_on="NAME_1", 
-        how="inner"
-    )
-    
-    # Update final_df with NAME_1 matches
-    for _, coord_row in name1_matches.iterrows():
-        mask = final_df['NAME_1'] == coord_row['NAME_1']
-        final_df.loc[mask, 'admin1'] = coord_row['admin1']
-        final_df.loc[mask, 'longitude'] = coord_row['longitude']
-        final_df.loc[mask, 'latitude'] = coord_row['latitude']
-        final_df.loc[mask, 'match_method'] = 'NAME_1'
-    
-    matched_admin1 = name1_matches['admin1'].tolist()
-    
-    # Step 2: VARNAME_1 matching for unmatched coords
-    if 'VARNAME_1' in adm1_shapes.columns:
-        unmatched_coords = coords_pd[~coords_pd['admin1'].isin(matched_admin1)]
-        
-        if len(unmatched_coords) > 0:
-            varname_matches = unmatched_coords.merge(
-                final_df[['NAME_1', 'VARNAME_1']], 
-                left_on="admin1", 
-                right_on="VARNAME_1", 
-                how="inner"
-            )
-            
-            # Update final_df with VARNAME_1 matches
-            for _, coord_row in varname_matches.iterrows():
-                mask = final_df['NAME_1'] == coord_row['NAME_1']
-                final_df.loc[mask, 'admin1'] = coord_row['admin1']
-                final_df.loc[mask, 'longitude'] = coord_row['longitude']
-                final_df.loc[mask, 'latitude'] = coord_row['latitude']
-                final_df.loc[mask, 'match_method'] = 'VARNAME_1'
-            
-            matched_admin1.extend(varname_matches['admin1'].tolist())
-    
-    # Step 3: Spatial matching for remaining unmatched coords
-    still_unmatched = coords_pd[~coords_pd['admin1'].isin(matched_admin1)]
-    
-    if len(still_unmatched) > 0:
-        
-        # Create Point geometries
-        still_unmatched = still_unmatched.copy()
-        still_unmatched['point_geom'] = [
-            Point(row['longitude'], row['latitude']) for _, row in still_unmatched.iterrows()
-        ]
-        
-        # Convert to GeoDataFrame
-        unmatched_gdf = gpd.GeoDataFrame(still_unmatched, geometry='point_geom', crs=adm1_shapes.crs)
-        
-        # Spatial join
-        spatial_matches = gpd.sjoin(
-            unmatched_gdf, 
-            final_df[['NAME_1', 'geometry']], 
-            how='inner', 
-            predicate='within'
-        )
-        
-        # Update final_df with spatial matches
-        for _, coord_row in spatial_matches.iterrows():
-            mask = final_df['NAME_1'] == coord_row['NAME_1']
-            final_df.loc[mask, 'admin1'] = coord_row['admin1']
-            final_df.loc[mask, 'longitude'] = coord_row['longitude']
-            final_df.loc[mask, 'latitude'] = coord_row['latitude']
-            final_df.loc[mask, 'match_method'] = 'spatial'
-        
-        matched_admin1.extend(spatial_matches['admin1'].tolist())
-    
-    # Step 4: Add all regions data including avg1 and total_forecast
-    
-    # Aggregate data for each admin1 (get max percentage and corresponding avg1/total_forecast)
-    all_regions_agg = all_regions_pd.loc[
-        all_regions_pd.groupby('admin1')['percent_increase1'].idxmax()
-    ][['admin1', 'percent_increase1', 'avg1', 'total_forecast']].reset_index(drop=True)
-    
-    # Merge all regions data
-    final_df = final_df.merge(
-        all_regions_agg, 
-        on='admin1', 
-        how='left'
-    )
-    
-    # Fill missing values
-    final_df['percent_increase1'] = final_df['percent_increase1'].fillna(0)
-    final_df['avg1'] = final_df['avg1'].fillna(0)
-    final_df['total_forecast'] = final_df['total_forecast'].fillna(0)
-    final_df['longitude'] = pd.to_numeric(final_df['longitude'], errors='coerce')
-    final_df['latitude'] = pd.to_numeric(final_df['latitude'], errors='coerce')
-    
-    
-    return final_df
-
-
-def create_visualization(final_merged_df: gpd.GeoDataFrame, country: str) -> go.Figure:
-    """
-    Create interactive choropleth map visualization.
-    
-    Args:
-        final_merged_df: Merged GeoDataFrame with all data
-        country: Country name
-    
-    Returns:
-        Plotly Figure object
-    """
-    merged = final_merged_df.copy()
-
-    # Custom color scale: blue → white → red
-    custom_scale = [
-        (0.00, "#5b9bd5"),   # blue
-        (0.50, "#ffffff"),   # white (center = 0%)
-        (1.00, "#d73600"),   # dark red
-    ]
-
-    min_val = merged["percent_increase1"].min()
-    max_val = merged["percent_increase1"].max()
-    abs_max = max(abs(min_val), abs(max_val))
-
-    # Create choropleth map
-    geojson = json.loads(merged.to_json())
-
-    fig = px.choropleth(
-        merged,
-        geojson=geojson,
-        locations="NAME_1",
-        featureidkey="properties.NAME_1",
-        color="percent_increase1",
-        color_continuous_scale=custom_scale,
-        range_color=(-abs_max, abs_max),  # Center the scale at 0
-        hover_name="NAME_1",
-        hover_data={
-            "percent_increase1": ":.1f",
-            "avg1": True,
-            "total_forecast": True,
-        },
-        labels={
-            "percent_increase1": "% Change in Conflict Risk ",
-            "avg1": "Average Observed Events Last Month ",
-            "total_forecast": "Total Forecasted Events Next Month "
-        },
-    )
-
-    fig.update_traces(
-        hovertemplate=(
-            "<b>%{hovertext}</b><br>"
-            "% Change in Conflict Risk: %{customdata[0]:.1f}%<br>"
-            "Average Observed Events Last Month: %{customdata[1]}<br>"
-            "Total Forecasted Events Next Month: %{customdata[2]}"
-            "<extra></extra>"  # hides the trace name box
-        )
-    )
-
-    # Add region labels
-    centroids = merged.copy()
-    centroids["pnt"] = centroids.representative_point()
-    centroids["lon"] = centroids.pnt.x
-    centroids["lat"] = centroids.pnt.y
-
-    # Build label text: name + % only if non-zero
-    centroids["label"] = np.where(
-        centroids["percent_increase1"] != 0,
-        centroids["NAME_1"] + "<br>" +
-        centroids["percent_increase1"].round(1).astype(str) + "%",
-        centroids["NAME_1"]  # just the name when value == 0
-    )
-
-    fig.add_trace(
-        go.Scattergeo(
-            lon=centroids["lon"],
-            lat=centroids["lat"],
-            text=centroids["label"],
-            mode="text",
-            textfont=dict(size=10, color="black"),
-            hoverinfo="skip",
-            showlegend=False,
-        )
-    )
-
-    # Layout tweaks
-    fig.update_geos(fitbounds="locations", visible=False)
-
-    fig.update_layout(
-        title=f"{country}: Conflict Risk Change by Region"
-              "<br><sub>Red = Increase, Blue = Decrease, White = No Change</sub>",
-        margin=dict(l=0, r=0, t=80, b=0),
-        coloraxis_colorbar=dict(
-            title=dict(text="% Change in<br>Conflict Risk", side="right")
-        )
-    )
-
-    return fig
-
-
-def create_tabular_chart(final_merged_df: gpd.GeoDataFrame, country: str) -> go.Figure:
-    """
-    Create a horizontal bar chart showing forecasted events data with percent_increase1, avg1, and total_forecast values.
-    """
-    # Filter only regions with data and sort by percent_increase1 descending
-    df_filtered = final_merged_df[
-        (final_merged_df['admin1'].notna()) & 
-        (final_merged_df['percent_increase1'] != 0)
-    ].copy()
-    
-    if len(df_filtered) == 0:
-        print("No data available for tabular chart")
-        return go.Figure()
-    
-    # Sort by percent_increase1 in ascending order (for proper horizontal order)
-    df_sorted = df_filtered.sort_values('percent_increase1', ascending=True)
-    
-    # Prepare data for the bar chart
-    admin_names = df_sorted['admin1'].tolist()
-    forecast_values = df_sorted['total_forecast'].round(0).astype(int).tolist()
-    average_values = df_sorted['avg1'].round(0).astype(int).tolist()
-    percent_changes = df_sorted['percent_increase1'].round(1).tolist()
-    
-    # Create color mapping for bars
-    colors = []
-    for pct in percent_changes:
-        if pct >= 50:
-            colors.append('#d73600')
-        elif pct >= 25:
-            colors.append('#ff6b35')
-        elif pct >= 0:
-            colors.append('#ffd700')
-        else:
-            colors.append('#5b9bd5')
-    
-    # Create the horizontal bar chart
-    fig = go.Figure()
-    
-    fig.add_trace(go.Bar(
-        y=admin_names,
-        x=percent_changes,
-        orientation='h',
-        marker=dict(
-            color=colors,
-            line=dict(color='black', width=0.5)
-        ),
-        text=[f"{pct}%" for pct in percent_changes],
-        textposition='outside',
-        textfont=dict(size=12, color='black'),
-        cliponaxis=False,  # Prevent cropping of labels
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "Percent Change: %{x:.1f}%<br>"
-            "Average Events: %{customdata[0]}<br>"
-            "Forecasted Events: %{customdata[1]}"
-            "<extra></extra>"
-        ),
-        customdata=list(zip(average_values, forecast_values)),
-        name="Percent Change"
-    ))
-    
-    # Update layout with better spacing
-    fig.update_layout(
-        title=f"Forecasted Events for {country}<br>"
-              f"<sub>Relative to 1-Month Average</sub>",
-        xaxis_title="Percent Change (%)",
-        yaxis_title="Regions",
-        font=dict(size=10),
-        margin=dict(l=250, r=20, t=100, b=80),  # More left, less right margin
-        height=len(df_sorted) * 30,
-        paper_bgcolor='white',
-        plot_bgcolor='white',
-        showlegend=False
-    )
-    
-    # Remove x-axis ticks and add space between y-labels and bars
-    fig.update_xaxes(
-        showticklabels=False,
-        ticks="",
-        tickfont=dict(size=10)
-    )
-    
-    fig.update_yaxes(
-        tickfont=dict(size=12),
-        ticksuffix="    "
-    )
-    
-    # Add vertical line at 0% (neutral line)
-    fig.add_vline(
-        x=0, 
-        line_dash="solid", 
-        line_color="gray", 
-        line_width=1
-    )
-    
-    return fig
-
-
-def save_visualizations(fig: go.Figure, bar_chart_fig: go.Figure, country: str, final_merged_df: gpd.GeoDataFrame):
-    """
-    Save the interactive plots in multiple formats.
-    
-    Args:
-        fig: Plotly choropleth map figure to save
-        bar_chart_fig: Plotly bar chart figure to save
-        country: Country name
-        final_merged_df: Merged data for statistics
-    """
-    # Create output directory
-    output_dir = Path(__file__).parent.parent.parent / 'data' / 'images'
+    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled_cast'
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Generate timestamp for unique filenames
-    timestamp = datetime.now().strftime("%Y-%m-%d")
     
-    # Save choropleth map
-    map_base_filename = f"Map_{country.replace(' ', '_')}_{timestamp}"
+    # Convert Polars DataFrame to pandas for parquet saving
+    if hasattr(hotspots, 'to_pandas'):
+        # It's a Polars DataFrame
+        df_to_save = hotspots.to_pandas()
+    else:
+        # It's already a pandas DataFrame
+        df_to_save = hotspots
     
-    # Save as HTML (interactive)
-    html_file = output_dir / f"{map_base_filename}.html"
-    fig.write_html(html_file)
+    date = datetime.now().strftime('%Y-%m-%d')
+    output_path = output_dir / f"ACLED_CAST_{country}_{date}.parquet"
+    df_to_save.to_parquet(output_path)
 
-    # Save as PDF (static, high quality)
-    pdf_file = output_dir / f"{map_base_filename}.pdf"
-    fig.write_image(pdf_file, width=1200, height=800)
-
-    # Save as SVG (vector format)
-    svg_file = output_dir / f"{map_base_filename}.svg"
-    fig.write_image(svg_file, width=1200, height=800)
-    
-    # Save tabular chart
-    table_base_filename = f"BarChart_{country.replace(' ', '_')}_{timestamp}"
-    
-    # Save as HTML (interactive)
-    table_html_file = output_dir / f"{table_base_filename}.html"
-    bar_chart_fig.write_html(table_html_file)
-
-    # Save as PDF (static, high quality)
-    table_pdf_file = output_dir / f"{table_base_filename}.pdf"
-    bar_chart_fig.write_image(table_pdf_file, width=800, height=max(400, len(final_merged_df) * 30 + 150))
-
-    # Save as SVG (vector format)
-    table_svg_file = output_dir / f"{table_base_filename}.svg"
-    bar_chart_fig.write_image(table_svg_file, width=800, height=max(400, len(final_merged_df) * 30 + 150))
-    
-
+#------------- Create Visuals -------------
 
 def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regions: pl.DataFrame):
     """
@@ -678,28 +293,389 @@ def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regi
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(hotspots_data, f, indent=2, ensure_ascii=False)
-    
+        
 
-
-def save_data(final_merged_df: gpd.GeoDataFrame, country: str):
+def create_tabular_chart(all_regions, country):
     """
-    Save the processed data as parquet file.
+    Create a horizontal bar chart showing forecasted events data with percent_increase1, avg1, and total_forecast values.
+    """
+    # Convert Polars DataFrame to pandas for visualization
+    df_pandas = all_regions.to_pandas()
+    
+    # Filter only regions with data and sort by percent_increase1 descending
+    df_filtered = df_pandas[
+        (df_pandas['admin1'].notna()) & 
+        (df_pandas['total_forecast'] != 0) |
+        (df_pandas['avg1'] != 0) |
+        (df_pandas['percent_increase1'] != 0)
+    ].copy()
+    
+    if len(df_filtered) == 0:
+        print("No data available for tabular chart")
+        return go.Figure()
+    
+    # Sort by percent_increase1 in ascending order (for proper horizontal order)
+    df_sorted = df_filtered.sort_values('percent_increase1', ascending=True)
+    
+    # Prepare data for the bar chart
+    admin_names = df_sorted['admin1'].tolist()
+    forecast_values = df_sorted['total_forecast'].round(0).astype(int).tolist()
+    average_values = df_sorted['avg1'].round(0).astype(int).tolist()
+    percent_changes = df_sorted['percent_increase1'].round(1).tolist()
+    
+    # Create multi-line text labels
+    text_labels = []
+    for i, pct in enumerate(percent_changes):
+        avg_val = average_values[i]
+        forecast_val = forecast_values[i]
+        text_labels.append(f"<b>{pct}%</b>   (from {avg_val} to {forecast_val})")
+    
+    # Create color mapping for bars
+    colors = []
+    for pct in percent_changes:
+        if pct >= 50:
+            colors.append('#d73600')
+        elif pct >= 25:
+            colors.append('#ff6b35')
+        elif pct >= 0:
+            colors.append('#ffd700')
+        else:
+            colors.append('#5b9bd5')
+    
+    # Create the horizontal bar chart
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        y=admin_names,
+        x=percent_changes,
+        orientation='h',
+        marker=dict(
+            color=colors,
+            line=dict(color='white', width=0.5)
+        ),
+        text=text_labels,
+        textposition='outside',
+        textfont=dict(size=10),  # Make bar labels bigger
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Percent Change: %{x:.1f}%<br>"
+            "Average Events: %{customdata[0]}<br>"
+            "Forecasted Events: %{customdata[1]}"
+            "<extra></extra>"
+        ),
+        customdata=list(zip(average_values, forecast_values)),
+        name="Percent Change"
+    ))
+    
+    # Calculate dynamic height based on number of regions
+    num_regions = len(df_sorted)
+    bar_height = 50
+    calculated_height = max(50, num_regions * bar_height)  # Usual scaling for larger n
+        
+    
+    x_range = [min(percent_changes)-350, max(percent_changes)+400]
+    
+    # Update axes with better formatting
+    fig.update_xaxes(
+        showticklabels=True,
+        tickfont=dict(size=12),
+        showgrid=False,
+        gridcolor='lightgray',
+        automargin=True
+    )
+
+    fig.update_yaxes(
+        tickfont=dict(size=12),
+        tickmode='linear',
+        showgrid=False,
+        side='left',
+        categoryorder='array',
+        categoryarray=admin_names,
+        automargin=True# Ensure proper ordering
+    )
+    
+    # Update layout with better spacing
+    fig.update_layout(
+        title=f"Predicted Violence Increase for {country} for the Next Month<br>"
+              f"<sub>(Number of Forecasted Events Relative to Last Month)</sub>",
+        xaxis_title="Percent Change (%)",
+        yaxis_title="Regions",
+        font=dict(size=11, family="Arial, sans-serif"),
+        uniformtext_minsize=12,  # Ensures all bar labels are at least size 12
+        uniformtext_mode='show', # Show even if they overflow
+        margin=dict(l=20, r=0, t=120, b=80),  # Increased right margin for multi-line labels
+        height=calculated_height,
+        width=2000,  # Increased width to accommodate multi-line labels
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        showlegend=False,
+        xaxis=dict(range=x_range),  # Set x-axis range for more space
+        bargap=0.3
+    )
+    
+    # Add vertical line at 0% (neutral line)
+    fig.add_vline(
+        x=0, 
+        line_dash="solid", 
+        line_color="gray", 
+        line_width=1
+    )
+    
+    return fig
+
+
+def save_barchart(fig: go.Figure, country: str):
+    """
+    Save the interactive plots in multiple formats.
     
     Args:
-        final_merged_df: Final merged data
+        fig: Plotly bar chart figure to save
+        country: Country name
+        hotspots: Merged data for statistics (Polars DataFrame)
+    """
+    # Create output directory
+    output_dir = Path(__file__).parent.parent.parent / 'data' / 'images'
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate timestamp for unique filenames
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+
+    # Save tabular chart
+    table_base_filename = f"BarChart_{country.replace(' ', '_')}_{timestamp}"
+    
+    try:
+        # Save as HTML (interactive)
+        table_html_file = output_dir / f"{table_base_filename}.html"
+        fig.write_html(table_html_file)
+
+        # Save as SVG (vector format)
+        table_svg_file = output_dir / f"{table_base_filename}.svg"
+        fig.write_image(table_svg_file)
+
+    except Exception as e:
+        print(f"Error saving some visualization formats: {e}")
+        # At least save the HTML version
+        table_html_file = output_dir / f"{table_base_filename}.html"
+        fig.write_html(table_html_file)
+        print(f"Saved only HTML chart: {table_html_file}")
+    
+
+#------------- Create Conflict Forecast Visuals ---------
+
+def plot_conflict_forecast(country: str):
+    """
+    Plot conflict probability forecast for a specific country with gradient colors.
+    """
+    import polars as pl
+    import requests
+    import pycountry
+    import plotly.graph_objects as go
+
+    # Improved ISO3 code lookup
+    def iso3(name):
+        name = name.lower().strip()
+        
+        # Handle common country name mappings first
+        country_mappings = {
+            'united states': 'USA',
+            'usa': 'USA',
+            'us': 'USA',
+            'america': 'USA',
+            'united states of america': 'USA',
+            'russia': 'RUS',
+            'russian federation': 'RUS',
+            'iran': 'IRN',
+            'south korea': 'KOR',
+            'north korea': 'PRK',
+            'uk': 'GBR',
+            'britain': 'GBR',
+            'great britain': 'GBR',
+            'united kingdom': 'GBR',
+        }
+        
+        if name in country_mappings:
+            return country_mappings[name]
+        
+        # Try exact matches first
+        try:
+            for country in pycountry.countries:
+                try:
+                    country_name_attr = getattr(country, 'name', '')
+                    official_name_attr = getattr(country, 'official_name', '')
+                    alpha_3_attr = getattr(country, 'alpha_3', '')
+                    
+                    names_to_check = [
+                        country_name_attr.lower() if country_name_attr else '',
+                        official_name_attr.lower() if official_name_attr else '',
+                        alpha_3_attr.lower() if alpha_3_attr else ''
+                    ]
+                    if name in names_to_check:
+                        return alpha_3_attr
+                except (AttributeError, TypeError):
+                    continue
+        except Exception:
+            pass
+        
+        # Then try substring matching (but prioritize shorter matches)
+        matches = []
+        try:
+            for country in pycountry.countries:
+                try:
+                    country_name_attr = getattr(country, 'name', '')
+                    official_name_attr = getattr(country, 'official_name', '')
+                    alpha_3_attr = getattr(country, 'alpha_3', '')
+                    
+                    names_to_check = [
+                        country_name_attr.lower() if country_name_attr else '',
+                        official_name_attr.lower() if official_name_attr else ''
+                    ]
+                    for country_name in names_to_check:
+                        if country_name and (name in country_name or country_name in name):
+                            matches.append((alpha_3_attr, len(country_name), country_name))
+                except (AttributeError, TypeError):
+                    continue
+        except Exception:
+            pass
+                
+        if matches:
+            # Sort by length to prefer shorter, more precise matches
+            matches.sort(key=lambda x: x[1])
+            return matches[0][0]
+            
+        print(f"Country '{name}' not found in ISO lookup.")
+        return None
+
+    try:
+        print("Fetching Conflict Forecast data...")
+        # Get latest file listing and find target file
+        files = requests.get(
+            "http://api.backendless.com/C177D0DC-B3D5-818C-FF1E-1CC11BC69600/C5F2917E-C2F6-4F7D-9063-69555274134E/services/fileService/get-latest-file-listing"
+        ).json()
+        file_url = next((f["publicUrl"] for f in files if f["name"] == "conflictforecast_ons_armedconf_03.csv"), None)
+        if not file_url:
+            raise ValueError("Target file not found.")
+
+        # Read and filter data
+        df = pl.read_csv(requests.get(file_url).content)
+        
+        iso = iso3(country)
+        if not iso:
+            raise ValueError(f"ISO code not found for {country}")
+        
+        df = df.filter(pl.col("isocode") == iso)
+        if df.height == 0:
+            raise ValueError(f"No data for {country}")
+
+        # Parse dates and filter
+        df = df.with_columns([
+            pl.col("period").cast(str).str.slice(0, 4).alias("year"),
+            pl.col("period").cast(str).str.slice(4, 6).alias("month"),
+        ])
+        df = df.with_columns([
+            (pl.col("year") + "-" + pl.col("month")).str.to_datetime("%Y-%m").alias("date")
+        ]).filter(pl.col("year").cast(int) >= 2020)
+        if df.height == 0:
+            raise ValueError(f"No data for {country} from 2020")
+
+        pdf = df.select(["date", "ons_armedconf_03_all"]).to_pandas()
+        x, y = pdf["date"], pdf["ons_armedconf_03_all"]
+        norm = (y - y.min()) / (y.max() - y.min())
+
+        fig = go.Figure()
+        # Add colored line segments
+        for i in range(len(x)-1):
+            c = int(255 * ((norm.iloc[i] + norm.iloc[i+1])/2))
+            fig.add_trace(go.Scatter(
+                x=[x.iloc[i], x.iloc[i+1]], y=[y.iloc[i], y.iloc[i+1]],
+                mode='lines', line=dict(color=f'rgb({c},0,{255-c})', width=2),
+                showlegend=False, hoverinfo='skip'
+            ))
+        # Last value label
+        fig.add_trace(go.Scatter(
+            x=[x.iloc[-1]], y=[y.iloc[-1]], mode='markers+text',
+            marker=dict(color='darkred', size=8),
+            text=[f'{y.iloc[-1]:.2f}'], textposition='top right',
+            textfont=dict(size=12, color='darkred'), showlegend=False
+        ))
+
+        fig.update_layout(
+            title=f'Armed Conflict Probability Forecast - {country}',
+            xaxis_title='Date', yaxis_title='Conflict Probability',
+            font=dict(size=12, family='Arial, sans-serif'), showlegend=False,
+            width=900, height=500, paper_bgcolor='white', plot_bgcolor='white'
+        )
+        fig.update_xaxes(
+            showgrid=True, gridcolor='lightgray', gridwidth=1,
+            dtick="M3", tickformat="%b", tickangle=45, automargin=True
+        )
+        fig.update_yaxes(showgrid=True, gridcolor='lightgray', gridwidth=0.5, automargin=True)
+        
+        # Add custom year annotations
+        years = pdf["date"].dt.year.unique()
+        for year in sorted(years):
+            # Find the first date of each year in the data
+            year_data = pdf[pdf["date"].dt.year == year]
+            if not year_data.empty:
+                first_date = year_data["date"].min()
+                fig.add_annotation(
+                    x=first_date,
+                    y=pdf["ons_armedconf_03_all"].min()-(((pdf["ons_armedconf_03_all"].max())-(pdf["ons_armedconf_03_all"].min()))*0.1),  # Position below the plot
+                    text=str(year),
+                    showarrow=False,
+                    font=dict(size=12),
+                    xanchor="left"
+                )
+        
+        return fig
+
+    except Exception as e:
+        print(f"Error in plot_conflict_forecast: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+    
+    
+def save_linechart(fig: go.Figure, country: str):
+    """
+    Save the interactive plots in multiple formats.
+    
+    Args:
+        fig: Plotly line chart figure to save
         country: Country name
     """
-    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled_cast'
+    # Check if figure is None
+    if fig is None:
+        print(f"Warning: No conflict forecast figure to save for {country}. Skipping line chart save.")
+        return
+    
+    # Create output directory
+    output_dir = Path(__file__).parent.parent.parent / 'data' / 'images'
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Convert to regular DataFrame for parquet saving (remove geometry)
-    df_to_save = pd.DataFrame(final_merged_df.drop(columns=['geometry']))
-    
-    date = datetime.now().strftime('%Y-%m-%d')
-    output_path = output_dir / f"ACLED_CAST_{country}_{date}.parquet"
-    df_to_save.to_parquet(output_path)
 
+    # Generate timestamp for unique filenames
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    
+    # Save tabular chart
+    linechart_filename = f"LineChart_{country.replace(' ', '_')}_{timestamp}"
+    
+    try:
+        # Save as HTML (interactive)
+        line_html_file = output_dir / f"{linechart_filename}.html"
+        fig.write_html(line_html_file)
 
+        # Save as SVG (vector format)
+        table_svg_file = output_dir / f"{linechart_filename}.svg"
+        fig.write_image(table_svg_file)
+
+    except Exception as e:
+        print(f"Error saving some visualization formats: {e}")
+        # At least save the HTML version
+        line_html_file = output_dir / f"{linechart_filename}.html"
+        fig.write_html(line_html_file)
+        print("Saved only HTML chart for ConfForecast")
+
+#------------- Main Execution Function -------------
 def main():
     """Main execution function."""
     try:
@@ -717,37 +693,37 @@ def main():
         # Step 1: Get CAST data
         cast_data = get_acled_cast_data(country)
         
-        # Step 2: Process data
+        if cast_data is None:
+            print(f"No ACLED CAST data available for {country}.")
+            # Only plot conflict forecast if CAST data is not available
+            fig_cf = plot_conflict_forecast(country)
+            if fig_cf is not None:
+                save_linechart(fig_cf, country)
+                print("Conflict forecast visualization saved.")
+            else:
+                print("Conflict forecast plotting failed.")
+            return
+        
+        # Step 2: Process data (only if CAST data is available)
         cast_with_averages = create_rolling_averages(cast_data)
         cast_processed = calculate_percent_increase(cast_with_averages)
         
         # Step 3: Identify hotspots and regions
         hotspots, all_regions, hotspots_list = identify_hotspots_and_regions(cast_processed, window, horizon)
         
-        # Step 4: Get geographical data
-        load_dotenv(find_dotenv(), override=True)
-        email = os.getenv("ACLED_EMAIL")
-        api_key = os.getenv("ACLED_API_KEY")
+        # Step 4: Create visualizations
+        fig_cast = create_tabular_chart(all_regions, country)
+        fig_cf = plot_conflict_forecast(country)
         
-        if not email or not api_key:
-            raise ValueError("ACLED credentials missing: set ACLED_EMAIL & ACLED_API_KEY environment variables.")
-        
-        coords = get_coordinates(country, email, api_key)
-        adm1_shapes = get_shapefile(country)
-        
-        # Step 5: Merge all data
-        final_merged_df = create_merged_mapping(coords, adm1_shapes, all_regions)
-        
-        # Step 6: Create visualizations
-        fig = create_visualization(final_merged_df, country)
-        bar_chart_fig = create_tabular_chart(final_merged_df, country)
-        
-        # Step 7: Save outputs
-        save_visualizations(fig, bar_chart_fig, country, final_merged_df)
-        save_data(final_merged_df, country)
+        # Step 5: Save outputs
+        if fig_cast is not None:
+            save_barchart(fig_cast, country)
+        if fig_cf is not None:
+            save_linechart(fig_cf, country)
+        save_acled_cast(hotspots, country)
         save_hotspots_list(hotspots_list, country, horizon, all_regions)
         
-        print("ACLED CAST JSON and visualizations saved.")
+        print("JSON with hotspots and visualizations saved.")
         
     except Exception as e:
         print(f"Error during ACLED CAST analysis: {str(e)}")
