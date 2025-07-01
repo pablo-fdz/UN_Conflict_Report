@@ -41,6 +41,9 @@ class GraphRAGResultsBase(BaseModel):
     answer: str = Field(
         description="The answer provided in response to the question."
     )
+    source: str = Field(
+        description="The source of the answer, which must be in the format `<author (physical person or newspaper>: <URL or reference to a document>`."
+    )
 
 class GraphRAGResults(BaseModel):
     """
@@ -48,7 +51,7 @@ class GraphRAGResults(BaseModel):
     This model contains a list of questions and their corresponding answers.
     """
     results: List[GraphRAGResultsBase] = Field(
-        description="A list of questions and answers related to the claims."
+        description="A list of questions, answers and sources related to the claims."
     )
 
 class EvaluationConclusions(enum.Enum):

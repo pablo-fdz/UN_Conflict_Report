@@ -177,7 +177,7 @@ class AccuracyEvaluator:
 
         Args:
             evaluated_data: The list of sections with evaluated claims. The structure is expected to be:
-                [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': 'answer_1', ...}, 'conclusion': 'true/false/mixture/error', 'justification': 'justification_text'}, ...]}, ...]
+                [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': ['answer_1', 'source_1'], ...}, 'conclusion': 'true/false/mixture/error', 'justification': 'justification_text'}, ...]}, ...]
             country: The country name for the report.
             retriever_type: The retriever type used.
 
@@ -239,11 +239,14 @@ class AccuracyEvaluator:
                     continue
                 conclusion = claim.get("conclusion", "error").upper()
                 justification = claim.get("justification")
+                source = claim.get("source", "N/A")  # Get the source of the claim, default to "N/A"
 
                 report_lines.append(f"\n### Claim {i+1}: {conclusion}")
                 report_lines.append(f"> {claim_text}")
                 if justification and conclusion in ["FALSE", "MIXTURE"]:
                     report_lines.append(f"**Justification:** {justification}")
+                if source:
+                    report_lines.append(f"**Source:** {source}")
             
             report_lines.append("\n---")
 

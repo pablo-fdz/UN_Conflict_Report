@@ -454,14 +454,14 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             
                             # The generated_answers_obj.results is a list of Pydantic objects.
                             # We now convert this list to a dictionary where the keys are the questions and the values are the answers.
-                            # Example: from a list of objects like [GraphRAGResultsBase(question='Q1', answer='A1'), ...]
-                            # to a dictionary like {'Q1': 'A1', ...}
+                            # Example: from a list of objects like [GraphRAGResultsBase(question='Q1', answer='A1', source='S1'), ...]
+                            # to a dictionary like {'Q1': ['A1', 'S1'], ...}
                             generated_answers = {}
                             if hasattr(generated_answers_obj, 'results'):  # Access the results attribute of the GraphRAGResults object
                                 generated_answers = {
-                                    item.question: item.answer 
+                                    item.question: [item.answer, item.source]  # Store the answer and source in a list 
                                     for item in generated_answers_obj.results 
-                                    if hasattr(item, 'question') and hasattr(item, 'answer')
+                                    if hasattr(item, 'question') and hasattr(item, 'answer') and hasattr(item, 'source')
                                 }
 
                             # Create the claim data structure
@@ -469,7 +469,9 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 "claim": claim,
                                 "questions": generated_answers
                             }
+
                             section_claims_list.append(claim_data)
+
                         except Exception as e:
                             print(f"Error during GraphRAG search for claim '{claim[:30]}...': {e}")
 
@@ -483,9 +485,9 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 # The results are now stored in all_sections_results, which is a list of dictionaries
                 # Each dictionary contains the section title and a list of claims with their questions and answers
                 # Sample output structure:
-                # [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': 'answer_1', ...}}, ...]}, ...]
+                # [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': ['answer_1', 'source_1], ...}}, ...]}, ...]
                 print(f"Completed processing for retriever '{retriever_name}' with {len(all_sections_results)} sections.")
-                print("Resulting dictionary of claims, questions and answers for the first section:", all_sections_results[0] if all_sections_results else "No sections found.")
+                print("Resulting dictionary of claims, questions, answers and sources for the first section:", all_sections_results[0] if all_sections_results else "No sections found.")
 
                 # ========== 6. Evaluate claims, format, and save the report ==========
                 
@@ -520,7 +522,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             eval_result = acc_evaluator.evaluate_one_claim(
                                 llm_evaluator=components['llm_evaluator'],
                                 claim_text=claim_data["claim"],
-                                questions_and_answers=claim_data["questions"],
+                                questions_and_answers=claim_data["questions"],  # Here we will pass the dictionary with all of the questions and the corresponding answers and sources associated with a claim
                                 base_eval_prompt=base_eval_prompt,
                                 structured_output=True
                             )
