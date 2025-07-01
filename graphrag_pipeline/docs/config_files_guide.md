@@ -889,6 +889,67 @@ If `true`, the context used to generate the report will be saved alongside the r
 
 *Recommended value*: set to `true`. This is invaluable for debugging, verification, and understanding why the LLM included certain information in its report.
 
+### rewrite_config
+
+#### *enabled*
+
+If `true`, will rewrite the original report with a corrected version using the generated accuracy report.
+
+*Trade-offs*:
+- If set to `true`, false or mixed factual claims of the original report will be corrected. Referencing will potentially improve with respect to the original report. However, some format errors may appear more frequently. 
+- If set to `false`, the cost of report generation will be lower (less LLM claims, though this rewriting procedure makes far less requests than the accuracy evaluation procedure). False or mixed claims will not be corrected.
+
+*Recommended value*: set to `true`.
+
+#### *rewrite_prompt*
+
+Prompt that will be used to rewrite each of the heading 2 sections of the original report. Must contain 4 placeholders: `{section_title}`, `{original_content}`, `{accuracy_content}` and `{report_sources}`.
+
+*Recommended value*: create prompt that properly instructs the LLM to 1) read the original content of the section, 2) review it with the claim-by-claim evaluataion, 3) rewrite the original content with the corrected content, and 4) set the referencing format.
+
+*Suggested prompt*:
+
+```json
+"You are an expert editor tasked with revising a report section based on a factual accuracy analysis. Your goal is to produce a corrected, well-written, and professionally toned narrative for the final report.\n\n**Instructions:**\n1.  Read the **Original Content** of the section.\n2.  Review the **Accuracy Analysis**, which contains a claim-by-claim evaluation (TRUE, FALSE, MIXTURE) of the original content, along with justifications and specific sources.\n3.  Rewrite the **Original Content** to create a new **Corrected Content**. You must:\n    -   Keep all information that was verified as TRUE.\n    -   Correct or remove information that was identified as FALSE, using the justification from the analysis.\n    -   Clarify and adjust information that was identified as a MIXTURE.\n    -   Ensure the final text is coherent, objective, and maintains a formal tone suitable for a security report.\n4.  As you rewrite, you must cite the sources provided in the **Accuracy Analysis** for all claims. Use footnote-style citations (e.g., [1], [2]).\n5.  Compile all of the sources you cited in the rewritten text. \n\n**Inputs:**\n\n**1. Section Title:**\n`{section_title}`\n\n**2. Original Content:**\n`{original_content}`\n\n**3. Accuracy Analysis:**\n`{accuracy_content}`\n\n**4. General Report Sources (for context only):**\n`{report_sources}`"
+```
+
+> Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
+
+#### *aggregation_prompt*
+
+Prompt that will be used to aggregate the section-by-section corrected report into one fluent, coherent report. Should contain an `{intermediate_report}` placeholder.
+
+*Recommended value*: prompt that properly instructs the LLM to create a coherent report out of a markdown report which contains a "Sources" heading in each section.
+
+*Suggested prompt*:
+
+```json
+"You are an expert technical editor specializing in consolidating and formatting reports. Your task is to process an intermediate markdown report, consolidate its sources, and produce a final, clean version.\n\n**Input Document Structure:**\nThe provided markdown document contains several sections, each starting with a level-2 heading (`##`). Each section contains:\n1.  Rewritten content with in-text, footnote-style citations (e.g., [1], [2]).\n2.  A subsection with a level-3 heading (`### Sources`) that lists the sources for that section. The numbering of these sources is local to each section and may be duplicated across the document.\n\n**Your Instructions:**\n1.  **Consolidate Sources:** Read all the `### Sources` subsections. Identify all unique sources from the entire document and create a single, consolidated list.\n2.  **Re-number Citations:** Re-number the consolidated sources sequentially starting from 1. Then, go through the main text of each section and update all in-text citations (e.g., `[1]`, `[2]`) to match the new, global numbering of the consolidated source list.\n3.  **Final Formatting:**\n    -   Remove all the intermediate `### Sources` subsections.\n    -   Create a single, final `## Sources` section at the very end of the document.\n    -   Populate this final section with the consolidated, de-duplicated, and correctly numbered list of sources.\n    -   Ensure the entire document is coherent and correctly formatted in markdown.\n\n**Input Document:**\n```markdown\n{intermediate_report}\n```\n\n**Output:**\nReturn only the full, corrected markdown text of the final report. Do not include any other commentary or explanation."
+```
+
+#### *llm_rewriter_config*
+
+The LLM used to rewrite each of the sections of the report with the conclusions from the accuracy report.
+
+*Recommended values*: 
+- Use high-quality models (like `gemini-2.5-flash`) for these rewriting tasks, as we want to avoid mistakes of replacing true information or not replacing false information.
+- A low temperature (`0.0`) is recommended for more deterministic and objective outputs.
+- Set `"response_mime_type"` to `"application/json"`, which is needed to enforce the output structure in this step. 
+
+#### *llm_aggregator_config*
+
+The LLM used to create a final, coherent markdown report corrected with factual evaluation.
+
+*Recommended values*: 
+- Use high-quality models (like `gemini-2.5-flash`) for these rewriting tasks, as we want to avoid mistakes of replacing true information or not replacing false information.
+- A low temperature (`0.0`) is recommended for more deterministic and objective outputs.
+
+#### *save_intermediate_report*
+
+If set to `true`, the intermediate result of the corrected report will be saved in a separate folder in the directory of the original report.
+
+*Recommended value*: set to `true` for increased transparency and debugging.
+
 ### Most Impactful Parameters
 
 The three base prompts (`base_claims_prompt`, `base_questions_prompt`, `base_eval_prompt`) are crucial as they define the logic of the entire evaluation. The last prompt, `base_eval_prompt`, has an especially large impact on the final accuracy report that is generated. The quality of the evaluation depends heavily on how well these prompts guide the LLMs to perform their specific tasks. The choice of `retrievers` is also critical for finding the correct evidence in the graph.
