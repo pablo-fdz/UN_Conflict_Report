@@ -25,22 +25,35 @@ class ReportProcessor:
 
         return self.content
 
-    def get_sections(self, file_path: str) -> dict: 
+    def get_sections(self, file_path: str=None, file_content=None) -> dict: 
         """
         Splits the markdown content into sections based on the RegEx pattern 
         (e.g., level 2 headings with ##).
 
         Args:
             file_path (str): Path to the .md file.
+            file_content (str, optional): If provided, this content will be used instead of reading from the file.
         
         Returns:
             dict: A dictionary where keys are section titles and values are section bodies.
         """
 
-        self._get_content(file_path)  # Load content if not already loaded
+        if file_path:  # If a file path is provided, load content from the file path
 
-        if not self.content:
-            raise ValueError("No content loaded.")
+            self._get_content(file_path)  # Load content if not already loaded
+
+            if not self.content:
+                raise ValueError("No content loaded.")
+        
+        elif file_content:  # If content is provided directly
+
+            self.content = file_content  # Use the provided content
+
+            if not self.content:
+                raise ValueError("No content provided.")
+        
+        else:
+            raise ValueError("Either file_path or file_content must be provided.")
 
         matches = re.findall(self.pattern, self.content, re.DOTALL)
 

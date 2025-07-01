@@ -177,7 +177,7 @@ class AccuracyEvaluator:
 
         Args:
             evaluated_data: The list of sections with evaluated claims. The structure is expected to be:
-                [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': 'answer_1', ...}, 'conclusion': 'true/false/mixture/error', 'justification': 'justification_text'}, ...]}, ...]
+                [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': ['answer_1', 'source_1'], ...}, 'conclusion': 'true/false/mixture/error', 'justification': 'justification_text'}, ...]}, ...]
             country: The country name for the report.
             retriever_type: The retriever type used.
 
@@ -226,7 +226,7 @@ class AccuracyEvaluator:
                 section_stats[conclusion] = section_stats.get(conclusion, 0) + 1  # Increment the respective conclusion count
                 section_stats["total"] += 1  # Increment total claims count for the section
 
-            report_lines.append(f"## Section: {section_title}")
+            report_lines.append(f"## {section_title}")
             if section_stats["total"] > 0:
                 report_lines.append(f"**Section Score:** "
                                     f"True: {get_perc(section_stats['true'], section_stats['total'])}, "
@@ -240,12 +240,77 @@ class AccuracyEvaluator:
                 conclusion = claim.get("conclusion", "error").upper()
                 justification = claim.get("justification")
 
+                # Extract sources from the nested 'questions' dictionary
+                questions_and_answers = claim.get("questions", {})
+                sources = []  # Initialize an empty list to collect sources
+                if isinstance(questions_and_answers, dict):
+                    for answer_and_source in questions_and_answers.values():
+                        if isinstance(answer_and_source, list) and len(answer_and_source) > 1 and answer_and_source[1]:
+                            sources.append(answer_and_source[1])
+
+                unique_sources = sorted(list(set(sources)))
+
                 report_lines.append(f"\n### Claim {i+1}: {conclusion}")
                 report_lines.append(f"> {claim_text}")
                 if justification and conclusion in ["FALSE", "MIXTURE"]:
                     report_lines.append(f"**Justification:** {justification}")
+                if unique_sources:
+                    report_lines.append(f"**Sources:**")
+                    for src in unique_sources:
+                        report_lines.append(f"> - {src}")
+                else:  # If there are no sources, indicate "N/A"
+                    report_lines.append(f"**Source:** N/A")
             
             report_lines.append("\n---")
+
+        return "\n".join(report_lines)
+
+    def format_intermediate_corrected_report(self, corrected_sections: list, original_report_content: str) -> str:
+        """
+        Formats an intermediate corrected report from rewritten sections.
+
+        This method takes the original report's preamble (content before the first
+        level-2 heading) and appends the corrected sections to it. It also
+        consolidates all unique sources into a final "Sources" section.
+
+        Args:
+            corrected_sections (list): A list of dictionaries, where each dictionary contains:
+                - "title_section" (str): The title of the section.
+                - "corrected_content" (str): The rewritten content of the section.
+                - "sources" (list): A list of source dictionaries, each with 'number' and 'full_source'.
+            original_report_content (str): The full string content of the original report.
+
+        Returns:
+            str: The formatted markdown content of the intermediate corrected report.
+        """
+        report_lines = []
+        
+        # 1. Keep the content of the original report before the first heading 2
+        preamble = original_report_content.split('\n## ', 1)[0]
+        report_lines.append(preamble)
+
+        all_sources = {}  # Use a dictionary to store unique sources with their citation numbers
+
+        # 2. Append corrected sections
+        for section in corrected_sections:  # Loop over the dictionaries in the corrected_sections list
+            title = section.get("title_section", "Untitled Section")
+            content = section.get("corrected_content", "")  # Get the corrected content of the section, default to an empty string
+            sources = section.get("sources", [])  # Default to an empty list if no sources are provided
+
+            report_lines.append(f"\n## {title}")
+            report_lines.append(content)
+
+            # 3. Add a "Sources" subsection (heading 3) for the current section
+            if sources:
+                report_lines.append("\n### Sources")
+                # Sort sources by citation number before adding them
+                sorted_sources = sorted(sources, key=lambda x: x.get('number', 0))
+                for source_item in sorted_sources:
+                    if isinstance(source_item, dict):
+                        num = source_item.get('number')
+                        full_source = source_item.get('full_source')
+                        if num is not None and full_source:
+                            report_lines.append(f"{num}. {full_source}")
 
         return "\n".join(report_lines)
 
@@ -269,6 +334,66 @@ class AccuracyEvaluator:
         # Create new filename
         accuracy_filename = f"accuracy_{original_path.name}"
         save_path = accuracy_dir / accuracy_filename
+        
+        try:
+            with open(save_path, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            print(f"Accuracy report saved to: {save_path}")
+            return str(save_path)
+        except Exception as e:
+            print(f"Error saving accuracy report to {save_path}: {e}")
+            raise
+    
+    def save_intermediate_report(self, report_content: str, original_report_path: str) -> str:
+        """
+        Saves the intermediate report after evaluation to a file.
+
+        Args:
+            report_content: The markdown content of the report.
+            original_report_path: The path to the original report file.
+
+        Returns:
+            The path to the saved corrected report.
+        """
+        original_path = Path(original_report_path)
+        
+        # Create 'corrected_reports' subdirectory
+        corrected_dir = original_path.parent / "intermediate_reports"
+        corrected_dir.mkdir(exist_ok=True)
+        
+        # Create new filename
+        corrected_filename = f"intermediate_{original_path.name}"
+        save_path = corrected_dir / corrected_filename
+        
+        try:
+            with open(save_path, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            print(f"Accuracy report saved to: {save_path}")
+            return str(save_path)
+        except Exception as e:
+            print(f"Error saving accuracy report to {save_path}: {e}")
+            raise
+
+    def save_corrected_report(self, report_content: str, original_report_path: str) -> str:
+        """
+        Saves the original report corrected with the factual evaluation to a file.
+
+        Args:
+            report_content: The markdown content of the report.
+            original_report_path: The path to the original report file.
+
+        Returns:
+            The path to the saved corrected report.
+        """
+        original_path = Path(original_report_path)
+        
+        # Create 'corrected_reports' subdirectory
+        corrected_dir = original_path.parent / "corrected_reports"
+        corrected_dir.mkdir(exist_ok=True)
+        
+        # Create new filename
+        corrected_filename = f"corrected_{original_path.name}"
+        save_path = corrected_dir / corrected_filename
         
         try:
             with open(save_path, 'w', encoding='utf-8') as f:

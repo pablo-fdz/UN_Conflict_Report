@@ -13,12 +13,14 @@ if graphrag_pipeline_dir not in sys.path:
 import re
 from datetime import datetime
 from dotenv import load_dotenv
+from typing import Union
 import json
 from neo4j_graphrag.retrievers.base import Retriever
 from library.kg_indexer import KGIndexer
 from library.kg_builder.utilities import GeminiLLM, get_rate_limit_checker
 from neo4j_graphrag.generation import RagTemplate
 from library.graphrag import CustomGraphRAG
+from neo4j_graphrag.types import RetrieverResult
 
 # Neo4j and Neo4j GraphRAG imports
 import neo4j
@@ -142,7 +144,7 @@ class GraphRAGConstructionPipeline:
             retriever_search_params (dict[str, any]): Configuration for the search parameters of the input retriever. Defaults to None, which uses the default search parameters.
         
         Returns:
-            str: The generated answer from the GraphRAG pipeline.
+            str: The generated answer from the GraphRAG pipeline and the retrieved context (if context return is enabled).
         """
         
         try:
@@ -176,18 +178,19 @@ class GraphRAGConstructionPipeline:
             generated_answer = graphrag_results.answer
 
             if self.graphrag_config.get('return_context', True):  # If return_context is True, we can also access the context used for generating the answer
-                retrieved_context = graphrag_results.retriever_result  # For now, not used, but can be useful for debugging or further processing
+                retrieved_context = graphrag_results.retriever_result  # This will be a RetrieverResult object, containing `items` and `metadata`
 
         except Exception as e:
             raise RuntimeError(f"Error during GraphRAG construction pipeline execution: {e}")
         
         print(f"\n=== LLM requests made in this run: {self.llm_usage} ===\n")
 
-        return generated_answer  # Return the generated answer from the GraphRAG pipeline
+        return generated_answer, retrieved_context  # Return the generated answer and the retrieved context from the GraphRAG pipeline
     
     def save_report_to_markdown(
         self, 
-        answer: str, 
+        answer: str,
+        context: Union[RetrieverResult, None] = None,
         output_directory: str = None, 
         filename: str = None,
         country: str = None,
@@ -199,6 +202,8 @@ class GraphRAGConstructionPipeline:
         
         Args:
             answer (str): The generated answer from GraphRAG.
+            context (Union[RetrieverResult, None]): Optional context used for generating the answer. 
+                If provided, it will be saved in a separate "context" folder within the output directory.
             output_directory (str): Optional directory where to save the markdown file. If none is provided, uses a default directory structure based on the country naming.
             filename (str): Optional custom filename. If None, auto-generates based on timestamp.
             country (str): Country name for the report (used in title and filename).
@@ -206,7 +211,7 @@ class GraphRAGConstructionPipeline:
             metadata (dict): Additional metadata to include in the report.
             
         Returns:
-            str: Path to the saved markdown file
+            str: Path to the saved markdown file and to the JSON context file (if context is provided).
         """
         
         # Use default output directory if none provided
@@ -226,11 +231,11 @@ class GraphRAGConstructionPipeline:
         # Ensure filename has .md extension
         if not filename.endswith('.md'):
             filename += '.md'
-            
+
         filepath = os.path.join(output_directory, filename)  # Full path to the markdown file
         
         # Prepare markdown content
-        markdown_content = self._format_markdown_report(
+        report_content = self._format_markdown_report(
             answer=answer,
             country=country,
             retriever_type=retriever_type,
@@ -240,10 +245,38 @@ class GraphRAGConstructionPipeline:
         # Write to file
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(markdown_content)
-            return filepath
+                f.write(report_content)
         except Exception as e:
             raise RuntimeError(f"Error saving markdown file to {filepath}: {e}")
+        
+        # Save context to a separate file if provided
+        if context:
+            context_dir = os.path.join(output_directory, 'context')
+            os.makedirs(context_dir, exist_ok=True)
+            context_filename = f"context_{filename}"
+            context_filepath = os.path.join(context_dir, context_filename)
+            try:
+                context_items = context.items  # Get the items from the RetrieverResult (list of `content` and `metadata` for each retrieved result)
+                retrieved_results = []
+                for item in context_items:
+                    retrieved_results.append({
+                        'content': item.content,  # The content of the retrieved result
+                        'metadata': item.metadata  # The metadata associated with the retrieved result
+                    })
+                # Save context as a JSON file
+                context_json = {
+                    'country': country,  # Country for which the report was generated
+                    'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Timestamp of when the context was saved
+                    'retriever_type': retriever_type,  # Type of retriever used
+                    'retrieved_results': retrieved_results  # List of retrieved results with content and metadata
+                }
+                with open(context_filepath, 'w', encoding='utf-8') as f:
+                    f.write(context_json)
+            except Exception as e:
+                # Log or print a warning instead of raising an error to not stop the main report generation
+                print(f"Warning: Could not save context file to {context_filepath}: {e}")
+        
+        return filepath, context_filepath
     
     def _get_default_output_directory(self, country: str = None) -> str:
         """
