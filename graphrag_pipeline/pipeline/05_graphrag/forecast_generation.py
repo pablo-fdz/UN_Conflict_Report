@@ -756,7 +756,6 @@ def plot_conflict_forecast(country: str):
         return None
 
     try:
-        print("Fetching Conflict Forecast data...")
         # Get latest file listing and find target file
         files = requests.get(
             "http://api.backendless.com/C177D0DC-B3D5-818C-FF1E-1CC11BC69600/C5F2917E-C2F6-4F7D-9063-69555274134E/services/fileService/get-latest-file-listing"
@@ -904,8 +903,6 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
     else:
         output_dir = Path(default_output_directory) / 'assets'
     
-    print(f"Starting analysis for {country}...")
-    
     # Initialize tracking variables
     acled_available = False
     conflict_forecast_available = False
@@ -935,11 +932,9 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
                 fig_cast = create_tabular_chart(all_regions, country)
                 if fig_cast is not None:
                     save_barchart(fig_cast, country, output_dir)
-                    print("ACLED bar chart saved")
                 
                 # Save ACLED data
                 save_acled_cast(hotspots, country, output_dir)
-                print("ACLED data saved")
                 
                 acled_available = True
                 
@@ -956,7 +951,6 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
             
             if fig_cf is not None:
                 save_linechart(fig_cf, country, output_dir)
-                print("Conflict Forecast line chart saved")
                 conflict_forecast_available = True
             else:
                 print("No Conflict Forecast data available")
@@ -976,15 +970,6 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
             conflict_forecast_available=conflict_forecast_available
         )
         
-        # === SUMMARY ===
-        print("\n=== ANALYSIS SUMMARY ===")
-        print(f"Country: {country}")
-        print(f"ACLED CAST Data: {'Available' if acled_available else 'Not Available'}")
-        print(f"Conflict Forecast Data: {'Available' if conflict_forecast_available else 'Not Available'}")
-        if acled_available:
-            print(f"Identified Hotspots: {len(hotspots_list)}")
-        print(f"Output Directory: {output_dir}")
-        print("Analysis completed successfully!")
         
     except Exception as e:
         print(f"Critical error during analysis: {str(e)}")
