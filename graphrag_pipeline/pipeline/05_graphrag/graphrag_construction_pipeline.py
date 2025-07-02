@@ -378,6 +378,7 @@ class GraphRAGConstructionPipeline:
             if forecast_files:
                 latest_file = max(forecast_files, key=lambda f: os.path.getmtime(os.path.join(assets_dir, f)))
                 latest_filepath = os.path.join(assets_dir, latest_file)
+                forecast_data_path = latest_filepath  # Store the path to the latest forecast data file
 
                 # Load the JSON data from the file
                 with open(latest_filepath, 'r', encoding='utf-8') as f:
