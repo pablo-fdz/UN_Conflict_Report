@@ -1,26 +1,7 @@
 """
-Forecast analysis script.
-This script retrieves ACLED CAST and Conflict Forecast data, processes it to identify conflict hotspots,
-creates visualizations, and saves outpus.
-Workflow
-1. ACLED CAST Processing:
-   - Download data
-   - Process and analyze
-   - Create bar chart visualization
-   - Save processed data
-
-2. Conflict Forecast Processing:
-   - Download data
-   - Create line chart visualization
-
-3. Comprehensive Analysis:
-   - Generate combined JSON with both sources
-   - Include conflict forecast prediction text
-   - Mark data availability status
-
-4. Summary Report:
-   - Show what data was successfully processed
-   - Display output locations
+ACLED CAST (Conflict Alert and Surveillance Tool) analysis script.
+This script retrieves ACLED CAST forecasting data, processes it to identify conflict hotspots,
+creates visualizations, and saves outputs to "graphrag_pipeline/data/images".
 """
 
 import io
@@ -267,203 +248,15 @@ def save_acled_cast(hotspots, country: str, output_dir):
 
 #------------- Create Visuals -------------
 
-def get_conflict_forecast_prediction(country: str) -> str:
-    """Get the latest conflict forecast prediction for the country."""
-    try:
-        import polars as pl
-        import requests
-        import pycountry
-        
-        # ISO3 code lookup function (same as in plot_conflict_forecast)
-        def iso3(name):
-            name = name.lower().strip()
-            
-            # Handle common country name mappings first
-            country_mappings = {
-                'united states': 'USA',
-                'usa': 'USA',
-                'us': 'USA',
-                'america': 'USA',
-                'united states of america': 'USA',
-                'russia': 'RUS',
-                'russian federation': 'RUS',
-                'iran': 'IRN',
-                'south korea': 'KOR',
-                'north korea': 'PRK',
-                'uk': 'GBR',
-                'britain': 'GBR',
-                'great britain': 'GBR',
-                'united kingdom': 'GBR',
-            }
-            
-            if name in country_mappings:
-                return country_mappings[name]
-            
-            # Try exact matches first
-            try:
-                for country in pycountry.countries:
-                    try:
-                        country_name_attr = getattr(country, 'name', '')
-                        official_name_attr = getattr(country, 'official_name', '')
-                        alpha_3_attr = getattr(country, 'alpha_3', '')
-                        
-                        names_to_check = [
-                            country_name_attr.lower() if country_name_attr else '',
-                            official_name_attr.lower() if official_name_attr else '',
-                            alpha_3_attr.lower() if alpha_3_attr else ''
-                        ]
-                        if name in names_to_check:
-                            return alpha_3_attr
-                    except (AttributeError, TypeError):
-                        continue
-            except Exception:
-                pass
-            
-            # Then try substring matching
-            matches = []
-            try:
-                for country in pycountry.countries:
-                    try:
-                        country_name_attr = getattr(country, 'name', '')
-                        official_name_attr = getattr(country, 'official_name', '')
-                        alpha_3_attr = getattr(country, 'alpha_3', '')
-                        
-                        names_to_check = [
-                            country_name_attr.lower() if country_name_attr else '',
-                            official_name_attr.lower() if official_name_attr else ''
-                        ]
-                        for country_name in names_to_check:
-                            if country_name and (name in country_name or country_name in name):
-                                matches.append((alpha_3_attr, len(country_name), country_name))
-                    except (AttributeError, TypeError):
-                        continue
-            except Exception:
-                pass
-                    
-            if matches:
-                matches.sort(key=lambda x: x[1])
-                return matches[0][0]
-                
-            return None
-        
-        # Get latest file listing and find target file
-        files = requests.get(
-            "http://api.backendless.com/C177D0DC-B3D5-818C-FF1E-1CC11BC69600/C5F2917E-C2F6-4F7D-9063-69555274134E/services/fileService/get-latest-file-listing"
-        ).json()
-        file_url = next((f["publicUrl"] for f in files if f["name"] == "conflictforecast_ons_armedconf_03.csv"), None)
-        if not file_url:
-            return "Data not available"
-
-        # Read and filter data
-        df = pl.read_csv(requests.get(file_url).content)
-        
-        iso = iso3(country)
-        if not iso:
-            return "Country not found"
-        
-        df = df.filter(pl.col("isocode") == iso)
-        if df.height == 0:
-            return "No data available for this country"
-
-        # Parse dates and filter
-        df = df.with_columns([
-            pl.col("period").cast(str).str.slice(0, 4).alias("year"),
-            pl.col("period").cast(str).str.slice(4, 6).alias("month"),
-        ])
-        df = df.with_columns([
-            (pl.col("year") + "-" + pl.col("month")).str.to_datetime("%Y-%m").alias("date")
-        ]).filter(pl.col("year").cast(int) >= 2020)
-        if df.height == 0:
-            return "No recent data available"
-
-        pdf = df.select(["date", "ons_armedconf_03_all"]).to_pandas()
-        
-        # Get the last available value
-        last_value = pdf["ons_armedconf_03_all"].iloc[-1]
-        
-        return f"According to the estimate of the Conflict Forecast project, the probability that {country} will suffer an outbreak of armed conflict within the next three months is {last_value:.2f} percent."
-        
-    except Exception as e:
-        print(f"Error getting conflict forecast prediction: {e}")
-        return "Conflict forecast data not available"
-
-
-def save_comprehensive_analysis(country: str, horizon: int, output_dir, 
-                               hotspots_list: Optional[list] = None, all_regions: Optional[pl.DataFrame] = None,
-                               acled_available: bool = False, conflict_forecast_available: bool = False):
-    """
-    Save comprehensive analysis combining ACLED CAST and Conflict Forecast data.
-    
-    Args:
-        country: Country name
-        horizon: Forecast horizon in months
-        output_dir: Output directory
-        hotspots_list: List of hotspot regions (if ACLED data available)
-        all_regions: DataFrame with all regions data (if ACLED data available)
-        acled_available: Whether ACLED data was successfully processed
-        conflict_forecast_available: Whether Conflict Forecast data is available
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Initialize analysis data
-    analysis_data = {
-        "country": country,
-        "analysis_date": datetime.now().strftime('%Y-%m-%d-%H-%M-%S'),
-        "data_sources": {
-            "acled_cast": acled_available,
-            "conflict_forecast": conflict_forecast_available
-        }
-    }
-    
-    # Add Conflict Forecast data if available (before ACLED data)
-    if conflict_forecast_available:
-        conflict_prediction = get_conflict_forecast_prediction(country)
-        analysis_data["conflict_forecast_prediction"] = conflict_prediction
-    else:
-        analysis_data["conflict_forecast_prediction"] = "Data not available"
-    
-    # Add ACLED CAST data if available
-    if acled_available and hotspots_list is not None and all_regions is not None:
-        # Get detailed information for each hotspot region
-        hotspots_details = []
-        for region in hotspots_list:
-            region_data = all_regions.filter(pl.col("admin1") == region)
-            if region_data.height > 0:
-                region_sorted = region_data.sort("percent_increase1", descending=True)
-                region_row = region_sorted.head(1)
-                
-                hotspot_info = {
-                    "name": region,
-                    "avg1": float(region_row["avg1"][0]) if region_row["avg1"][0] is not None else 0.0,
-                    "total_forecast": float(region_row["total_forecast"][0]) if region_row["total_forecast"][0] is not None else 0.0,
-                    "percent_increase1": float(region_row["percent_increase1"][0]) if region_row["percent_increase1"][0] is not None else 0.0
-                }
-                hotspots_details.append(hotspot_info)
-        
-        analysis_data.update({
-            "acled_cast_analysis": {
-                "forecast_horizon_months": horizon,
-                "total_hotspots": len(hotspots_list),
-                "hotspot_regions": hotspots_details
-            }
-        })
-    else:
-        analysis_data["acled_cast_analysis"] = "Data not available"
-    
-    # Save the comprehensive analysis
-    date = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-    output_path = output_dir / f"forecast_data_{country.replace(' ', '_')}_{date}.json"
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(analysis_data, f, indent=2, ensure_ascii=False)
-    
-    print(f"Comprehensive analysis saved to: {output_path}")
-
-
 def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regions: pl.DataFrame,output_dir):
     """
     Save the hotspots list with detailed information as a JSON file.
-    [DEPRECATED] - Use save_comprehensive_analysis instead for combined data sources.
+    
+    Args:
+        hotspots_list: List of hotspot regions
+        country: Country name
+        horizon: Forecast horizon in months
+        all_regions: DataFrame with all regions data including metrics
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -485,21 +278,17 @@ def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regi
             }
             hotspots_details.append(hotspot_info)
     
-    # Get conflict forecast prediction
-    conflict_forecast_prediction = get_conflict_forecast_prediction(country)
-    
     # Create metadata for the JSON file
     hotspots_data = {
         "country": country,
         "forecast_horizon_months": horizon,
         "analysis_date": datetime.now().strftime('%Y-%m-%d-%H-%M-%S'),
-        "conflict_forecast_prediction": conflict_forecast_prediction,
         "total_hotspots": len(hotspots_list),
         "hotspot_regions": hotspots_details
     }
     
-    date = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-    output_path = output_dir / f"forecast_data_{country.replace(' ', '_')}_{date}.json"
+    date = datetime.now().strftime('%Y-%m-%d')
+    output_path = output_dir / f"hotspots_{country.replace(' ', '_')}_{date}.json"
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(hotspots_data, f, indent=2, ensure_ascii=False)
@@ -885,14 +674,11 @@ def save_linechart(fig: go.Figure, country: str,output_dir):
 
 #------------- Main Execution Function -------------
 def main(country: Optional[str] = None, custom_output_directory: Optional[str] = None):
-    """Main execution function with streamlined workflow for both data sources."""
+    """Main execution function."""
     
-    # Ensure we have a country
+    
     if country is None:
         country = os.getenv('GRAPHRAG_COUNTRY')
-    
-    if not country:
-        raise ValueError("Country must be specified either as parameter or GRAPHRAG_COUNTRY environment variable")
     
     graphrag_construction_pipeline = GraphRAGConstructionPipeline()
     default_output_directory = graphrag_construction_pipeline._get_default_output_directory(country=country)
@@ -904,105 +690,55 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
     else:
         output_dir = Path(default_output_directory) / 'assets'
     
-    print(f"Starting analysis for {country}...")
-    
-    # Initialize tracking variables
-    acled_available = False
-    conflict_forecast_available = False
-    hotspots_list = []
-    all_regions = None
-    
     try:
         # Load configuration
         config = load_config()
-        window = config.get('window', 1) if config else 1
-        horizon = config.get('horizon', 2) if config else 2
+        if not config:
+            raise ValueError("Failed to load configuration. Aborting analysis.")
         
-        # === ACLED CAST DATA PROCESSING ===
-        print(f"Processing ACLED CAST data for {country}...")
-        try:
-            cast_data = get_acled_cast_data(country)
-            
-            if cast_data is not None:
-                print("✓ ACLED CAST data retrieved successfully")
-                
-                # Process ACLED data
-                cast_with_averages = create_rolling_averages(cast_data)
-                cast_processed = calculate_percent_increase(cast_with_averages)
-                hotspots, all_regions, hotspots_list = identify_hotspots_and_regions(cast_processed, window, horizon)
-                
-                # Create and save ACLED visualization
-                fig_cast = create_tabular_chart(all_regions, country)
-                if fig_cast is not None:
-                    save_barchart(fig_cast, country, output_dir)
-                    print("✓ ACLED bar chart saved")
-                
-                # Save ACLED data
-                save_acled_cast(hotspots, country, output_dir)
-                print("✓ ACLED data saved")
-                
-                acled_available = True
-                
-            else:
-                print("⚠ No ACLED CAST data available")
-                
-        except Exception as e:
-            print(f"⚠ Error processing ACLED CAST data: {e}")
+        # country = config.get('country')
+        window = config.get('window', 1)
+        horizon = config.get('horizon', 2)
         
-        # === CONFLICT FORECAST DATA PROCESSING ===
-        print(f"Processing Conflict Forecast data for {country}...")
-        try:
+        print(f"Fetching ACLED CAST data for {country}...")
+        
+        # Step 1: Get CAST data
+        cast_data = get_acled_cast_data(country)
+        
+        if cast_data is None:
+            print(f"No ACLED CAST data available for {country}.")
+            # Only plot conflict forecast if CAST data is not available
             fig_cf = plot_conflict_forecast(country)
-            
             if fig_cf is not None:
-                save_linechart(fig_cf, country, output_dir)
-                print("✓ Conflict Forecast line chart saved")
-                conflict_forecast_available = True
+                save_linechart(fig_cf, country)
+                print("Conflict forecast visualization saved.")
             else:
-                print("⚠ No Conflict Forecast data available")
-                
-        except Exception as e:
-            print(f"⚠ Error processing Conflict Forecast data: {e}")
+                print("Conflict forecast plotting failed.")
+            return
         
-        # === GENERATE COMPREHENSIVE ANALYSIS ===
-        print("Generating comprehensive analysis...")
-        save_comprehensive_analysis(
-            country=country,
-            horizon=horizon,
-            output_dir=output_dir,
-            hotspots_list=hotspots_list,
-            all_regions=all_regions,
-            acled_available=acled_available,
-            conflict_forecast_available=conflict_forecast_available
-        )
+        # Step 2: Process data (only if CAST data is available)
+        cast_with_averages = create_rolling_averages(cast_data)
+        cast_processed = calculate_percent_increase(cast_with_averages)
         
-        # === SUMMARY ===
-        print("\n=== ANALYSIS SUMMARY ===")
-        print(f"Country: {country}")
-        print(f"ACLED CAST Data: {'✓ Available' if acled_available else '✗ Not Available'}")
-        print(f"Conflict Forecast Data: {'✓ Available' if conflict_forecast_available else '✗ Not Available'}")
-        if acled_available:
-            print(f"Identified Hotspots: {len(hotspots_list)}")
-        print(f"Output Directory: {output_dir}")
-        print("Analysis completed successfully!")
+        # Step 3: Identify hotspots and regions
+        hotspots, all_regions, hotspots_list = identify_hotspots_and_regions(cast_processed, window, horizon)
+        
+        # Step 4: Create visualizations
+        fig_cast = create_tabular_chart(all_regions, country)
+        fig_cf = plot_conflict_forecast(country)
+        
+        # Step 5: Save outputs
+        if fig_cast is not None:
+            save_barchart(fig_cast, country, output_dir)
+        if fig_cf is not None:
+            save_linechart(fig_cf, country,output_dir)
+        save_acled_cast(hotspots, country, output_dir)
+        save_hotspots_list(hotspots_list, country, horizon, all_regions,output_dir)
+        
+        print("JSON with hotspots and visualizations saved.")
         
     except Exception as e:
-        print(f"Critical error during analysis: {str(e)}")
-        # Still try to save whatever data we have
-        if acled_available or conflict_forecast_available:
-            try:
-                save_comprehensive_analysis(
-                    country=country,
-                    horizon=2,  # default value
-                    output_dir=output_dir,
-                    hotspots_list=hotspots_list,
-                    all_regions=all_regions,
-                    acled_available=acled_available,
-                    conflict_forecast_available=conflict_forecast_available
-                )
-                print("Partial analysis saved despite errors.")
-            except Exception as save_error:
-                print(f"Failed to save partial analysis: {save_error}")
+        print(f"Error during running analysis: {str(e)}")
         raise
 
 
