@@ -167,7 +167,6 @@ class GraphRAGConstructionPipeline:
 
             if forecast_data:
                 if forecast_data.get('acled_cast_analysis'):  # If ACLED CAST analysis is available
-                    forecast_horizon_months = forecast_data['acled_cast_analysis'].get('forecast_horizon_months', 2)  # Get the forecast horizon months, default to 2 if not present
                     total_hotspots = forecast_data['acled_cast_analysis'].get('total_hotspots', 0)  # Get the total hotspots, default to 0 if not present
                     hotspot_regions = forecast_data['acled_cast_analysis'].get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
 
@@ -178,7 +177,6 @@ class GraphRAGConstructionPipeline:
             formatted_query_text = self.graphrag_config.get('query_text', '').format(  # Use the information in the query text if specified, otherwise use an empty string
                 country=country,
                 current_month_year=current_month_year,  # Current month and year for the report
-                forecast_horizon_months=forecast_horizon_months if 'forecast_horizon_months' in locals() else 2,  # Use the forecast horizon months if available, otherwise default to 2
                 total_hotspots=total_hotspots if 'total_hotspots' in locals() else 0,  # Use the total hotspots if available, otherwise default to 0
                 hotspot_regions=hotspot_regions if 'hotspot_regions' in locals() else []  # Use the hotspot regions if available, otherwise default to empty list
             )
