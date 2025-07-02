@@ -160,7 +160,7 @@ class GraphRAGConstructionPipeline:
 
             # Get the latest forecast data for the country to pass ACLED hotspot
             # predictions into the report
-            forecast_data, _, _ = self._get_latest_forecast_data(output_directory)
+            forecast_data, _, _, _ = self._get_latest_forecast_data(output_directory)
 
             # Initialize hotspot variables with default values
             total_hotspots = 0
@@ -345,7 +345,7 @@ class GraphRAGConstructionPipeline:
             general_path = os.path.join(reports_base, 'general')
             return general_path
 
-    def _get_latest_forecast_data(self, output_directory: str) -> Tuple[dict, str, str]:
+    def _get_latest_forecast_data(self, output_directory: str) -> Tuple[dict, str, str, str]:
         """
         Get the latest forecast data from ConflictForecast and ACLED for a given country.
         
@@ -359,6 +359,7 @@ class GraphRAGConstructionPipeline:
                 - dict: Forecast data containing conflict forecast prediction (`conflict_forecast_prediction` with float value) and ACLED CAST analysis.
                 - str: Path to the latest ConflictForecast time series plot.
                 - str: Path to the latest ACLED CAST analysis hotspots plot.
+                - str: Path to the latest forecast data JSON file.
         """
         
         # Initialize variables to hold forecast data and chart paths
