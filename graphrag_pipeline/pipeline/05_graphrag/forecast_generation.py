@@ -224,7 +224,7 @@ def identify_hotspots_and_regions(cast_clean: pl.DataFrame, window: int = 1, hor
     return hotspots, all_regions, hotspots_list
 
 
-def save_acled_cast(hotspots, country: str):
+def save_acled_cast(hotspots, country: str, output_dir):
     """
     Save the processed data as parquet file.
     
@@ -232,7 +232,6 @@ def save_acled_cast(hotspots, country: str):
         hotspots: Processed hotspots DataFrame (Polars)
         country: Country name
     """
-    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled_cast'
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Convert Polars DataFrame to pandas for parquet saving
@@ -243,13 +242,13 @@ def save_acled_cast(hotspots, country: str):
         # It's already a pandas DataFrame
         df_to_save = hotspots
     
-    date = datetime.now().strftime('%Y-%m-%d')
+    date = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     output_path = output_dir / f"ACLED_CAST_{country}_{date}.parquet"
     df_to_save.to_parquet(output_path)
 
 #------------- Create Visuals -------------
 
-def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regions: pl.DataFrame):
+def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regions: pl.DataFrame,output_dir):
     """
     Save the hotspots list with detailed information as a JSON file.
     
@@ -259,7 +258,6 @@ def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regi
         horizon: Forecast horizon in months
         all_regions: DataFrame with all regions data including metrics
     """
-    output_dir = Path(__file__).parent.parent.parent / 'data' / 'acled_cast'
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get detailed information for each hotspot region
@@ -284,7 +282,7 @@ def save_hotspots_list(hotspots_list: list, country: str, horizon: int, all_regi
     hotspots_data = {
         "country": country,
         "forecast_horizon_months": horizon,
-        "analysis_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "analysis_date": datetime.now().strftime('%Y-%m-%d-%H-%M-%S'),
         "total_hotspots": len(hotspots_list),
         "hotspot_regions": hotspots_details
     }
@@ -398,8 +396,8 @@ def create_tabular_chart(all_regions, country):
     
     # Update layout with better spacing
     fig.update_layout(
-        #title=f"Predicted Violence Increase for {country} for the Next Month<br>"
-              f"Number of Forecasted Events Relative to Last Month",
+        # title=f"Predicted Violence Increase for {country} for the Next Month<br>"
+        #       f"Number of Forecasted Events Relative to Last Month",
         xaxis_title="Percent Change (%)",
         yaxis_title="Regions",
         font=dict(size=11, family="Arial, sans-serif"),
@@ -426,7 +424,7 @@ def create_tabular_chart(all_regions, country):
     return fig
 
 
-def save_barchart(fig: go.Figure, country: str):
+def save_barchart(fig: go.Figure, country: str, output_dir):
     """
     Save the interactive plots in multiple formats.
     
@@ -435,8 +433,7 @@ def save_barchart(fig: go.Figure, country: str):
         country: Country name
         hotspots: Merged data for statistics (Polars DataFrame)
     """
-    # Create output directory
-    output_dir = Path(__file__).parent.parent.parent / 'data' / 'images'
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate timestamp for unique filenames
@@ -637,7 +634,7 @@ def plot_conflict_forecast(country: str):
         return None
     
     
-def save_linechart(fig: go.Figure, country: str):
+def save_linechart(fig: go.Figure, country: str,output_dir):
     """
     Save the interactive plots in multiple formats.
     
@@ -651,7 +648,6 @@ def save_linechart(fig: go.Figure, country: str):
         return
     
     # Create output directory
-    output_dir = Path(__file__).parent.parent.parent / 'data' / 'images'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate timestamp for unique filenames
@@ -677,7 +673,7 @@ def save_linechart(fig: go.Figure, country: str):
         # print("Saved only HTML chart for ConfForecast")
 
 #------------- Main Execution Function -------------
-def main():
+def main(country: Optional[str] = None, custom_output_directory: Optional[str] = None):
     """Main execution function."""
     
     
@@ -733,11 +729,11 @@ def main():
         
         # Step 5: Save outputs
         if fig_cast is not None:
-            save_barchart(fig_cast, country)
+            save_barchart(fig_cast, country, output_dir)
         if fig_cf is not None:
-            save_linechart(fig_cf, country)
-        save_acled_cast(hotspots, country)
-        save_hotspots_list(hotspots_list, country, horizon, all_regions)
+            save_linechart(fig_cf, country,output_dir)
+        save_acled_cast(hotspots, country, output_dir)
+        save_hotspots_list(hotspots_list, country, horizon, all_regions,output_dir)
         
         print("JSON with hotspots and visualizations saved.")
         
