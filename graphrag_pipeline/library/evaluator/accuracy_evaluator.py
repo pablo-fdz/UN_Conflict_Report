@@ -6,6 +6,7 @@ from typing import Dict, List
 from neo4j_graphrag.llm import LLMInterface
 import json
 from datetime import datetime
+import re
 
 # Neo4j and Neo4j GraphRAG imports
 import neo4j
@@ -396,6 +397,8 @@ class AccuracyEvaluator:
         save_path = corrected_dir / corrected_filename
         
         try:
+            # Adjust asset paths for reports saved in a subdirectory to point to the parent assets folder
+            report_content_adjusted = re.sub(r"!\[(.*?)\]\((assets/.*?)\)", r"![\1](../\2)", report_content)
             with open(save_path, 'w', encoding='utf-8') as f:
                 f.write(report_content)
             print(f"Accuracy report saved to: {save_path}")
