@@ -712,15 +712,15 @@ High-level instructions for the LLM on its role and constraints (e.g., "Answer o
 
 ### search_text
 
-The initial, broad query used to kick off the retrieval process from the knowledge graph. This search text will be used to retrieve the most relevant context, through the cosine similarity of the search text's embedding and (with hybrid retrievers) with full text search. The `{country}` placeholder will be replaced with the target country at runtime.
+The initial, broad query used to kick off the retrieval process from the knowledge graph. This search text will be used to retrieve the most relevant context, through the cosine similarity of the search text's embedding and (with hybrid retrievers) with full text search. The `{country}` placeholder will be replaced with the target country at runtime. The `{hotspots_regions_list}` will be replaced with a comma-separated-list of ADM1 regions for which the number of violent events is expected to increase.
 
 *Trade-offs*: A broader query retrieves more context, which can lead to a more comprehensive report but also introduces more noise. A narrower query is more focused but might miss relevant tangential information.
 
-*Recommended value*: The default `"Security events, conflicts, and political stability in {country}."` is a good balance. Adjust it if you need to focus the report on a more specific topic (e.g., "Economic stability and trade agreements in {country}").
+*Recommended value*: The default `"Security events, conflicts, and political stability in {country}. Focus on the following conflict hotspots: {hotspot_regions_list}."` is a good balance. Adjust it if you need to focus the report on a more specific topic (e.g., "Economic stability and trade agreements in {country}").
 
 ### query_text
 
-The detailed prompt given to the LLM to generate the final report. It instructs the model on the desired structure, tone, and content. This query is *not* used to retrieve relevant context. 
+The detailed prompt given to the LLM to generate the final report. It instructs the model on the desired structure, tone, and content. This query is *not* used to retrieve relevant context. It must contain the following placeholders: `{country}`, `{current_month_year}`, `{total_hotspots}` and `{hotspot_regions}` placeholders.
 
 *Trade-offs*: 
 - A very detailed prompt gives you more control over the output but can be restrictive. 
@@ -729,10 +729,52 @@ The detailed prompt given to the LLM to generate the final report. It instructs 
 
 *Recommended value*: Be as specific as possible in your instructions. The suggested prompt is designed to produce a structured, markdown-formatted security report with citations, which is ideal for the project's goals.
 
+*Suggested query* (structured report):
+
+```json
+"Generate a comprehensive security report for {country} based on the provided `Context` below. The report should cover recent events and offer a forward-looking perspective on the country's security situation. Structure the report with a clear focus on key events, their impact, and the actors involved, and ensure the text is coherent, objective and maintains a formal tone suitable for a security report. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the `Context`. with footnote-style citations (e.g., [1], [2]). Whenever possible, the citations should include the author and platform (if the source is from social media) or the domain, as well as the URL. The markdown report MUST have the following structure, with the heading levels and names (whenever they are not in brackets - []) denoted below: \n# [Title for the security report]\n## 1. Overview\n## 2. Key Security Events\n## 3. Forward Outlook \n### Subnational Perspective\n#### [One heading 4 per subnational conflict hotspot]\n### [Include more heading 3 in this section under your discretion] ## 4. Sources\n In sections 1 (Overview) and 2 (Key Security Events), feel free to include whatever heading 3 titles you see fit with the provided `Context`. Furthermore, in section 2, if there is `Context` which can be linked to United Nations humanitarian operations, include a heading 3 which focuses on topic.\nIn section 3 (Forward Outlook), always include the heading 3 mentioned above (Subnational perspective), with one heading 4 per hotspot. If there are no hotspots, create the heading 4 sections you see fit. A subnational ADM1 region is considered a hotspot if the number of violent events is expected to increase by at least 25% in the short term. Based on the data available in {current_month_year}, the predicted number of hotspots is {total_hotspots} in {country}. The name of the hotspot regions, the average number of violent events in the last 3 months, the predicted number of violent events in the short term and the percentage increase in the number of violent events is the following:\n{hotspot_regions}\nIf no hotspots are provided, it means that there are no ADM1 regions that can be classified as such at this time."
+```
+
+> The structure of the report indicated in the prompt above should be kept in order to ensure compatibility with the final accuracy evaluation of the report (which relies on RegEx for extracting information based on the heading levels to then analyze claims per section).
+
+The final structure of the markdown report is suggested to be as follows (includes the structured sections that are appended to the report without using LLMs): 
+
+```md
+# [Title of the report at LLM discretion]
+
+## 1. Overview
+
+### [Section 1 subsections at LLM discretion]
+
+## 2. Key Security Events
+
+### [Section 2 subsections at LLM discretion]
+
+### [Section 2 subsection on UN humanitarian operations suggested, but at LLM discretion]
+
+## 3. Forward Outlook
+
+### Armed Conflict Probability Forecast (Conflict Forecast)
+
+Short paragraph on [ConflictForecast's armed conflict risk predictions](https://conflictforecast.org/) for that country, together with a time series plot on the probability of armed conflict risk 3 months ahead from 2020 onwards.
+
+### Subnational Perspective
+
+#### Predicted Increase in Violent Events in the Short Term (ACLED)
+
+Bar chart of ACLED's predictions of the regions which are expected to have a change in the number of violent events in the next 3 months.
+
+#### [One heading 4 per hotspot at LLM discretion - if no hotspots, subsections at LLM discretion]
+
+### [Additional heading 3 sections under LLM discretion]
+
+## 4. Sources
+```
+
 *Example query* (open-ended):
 
 ```json
-"Generate a comprehensive security report for {country} based on the provided context. The report should cover recent events from the last year and offer a forward-looking perspective on the country's stability. Structure the report with a clear focus on key events, their impact, and the actors involved. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the context."
+"Generate a comprehensive security report for {country} based on the provided context. The report should cover recent events from the last year and offer a forward-looking perspective on the country's stability. Structure the report with a clear focus on key events, their impact, and the actors involved. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the context, with footnote-style citations (e.g., [1], [2]). Whenever possible, the citations should include the author and platform (if the source is from social media) as well as the URL."
 ```
 
 ### examples
@@ -797,14 +839,14 @@ The prompt used to generate specific, answerable questions to verify each extrac
 
 #### *base_eval_prompt*
 
-The prompt used to make a final judgment (true, false, or mixture) on a claim based on the answers retrieved from the KG (see the [graphrag configuration for accuracy evaluation](#graphrag)) and previously verified claims. The placeholders `{claim_text}`, `{questions_and_answers_json}` and `{previously_true_claims}` need to be included inside the prompt.
+The prompt used to make a final judgment (true, false, or mixture) on a claim based on the answers retrieved from the KG (see the [graphrag configuration for accuracy evaluation](#graphrag)) and previously verified claims. The placeholders `{claim_text}`, `{questions_and_answers_json}`, `{previously_true_claims}` and `{hotspot_regions}` need to be included inside the prompt.
 
 *Recommended value*: this prompt defines the final evaluation logic. Provide examples on how should claims be considered.
 
 *Suggested prompt*:
 
 ```json
-"You are an expert fact-checker. Your task is to evaluate a claim based on a set of questions and their corresponding answers, as well as a list of previously verified true claims. The answers are generated from a knowledge base. Based on all the information provided, determine if the claim is true, false, or a mixture of true and false.\n\n- **true**: The provided information fully supports the claim. The claim can also be considered true if it can be logically inferred from the previously verified true claims.\n- **false**: The provided information explicitly contradicts the claim.\n- **mixture**: The provided information partially supports the claim, supports some parts but not others, or is insufficient to make a full determination.\n\nHere is the claim and the supporting information:\n\n**Claim to Evaluate:**\n\"{claim_text}\"\n\n**Questions and Answers for the Claim:**\n{questions_and_answers_json}\n\n**Previously Verified True Claims (for context):**\n{previously_true_claims}\n\n"
+"You are an expert fact-checker. Your task is to evaluate a claim based on a set of questions and their corresponding answers, as well as a list of previously verified true claims. The answers are generated from a knowledge base. Based on all the information provided, determine if the claim is true, false, or a mixture of true and false.\n\n- **true**: The provided information fully supports the claim. The claim can also be considered true if it can be logically inferred from the previously verified true claims.\n- **false**: The provided information explicitly contradicts the claim.\n- **mixture**: The provided information partially supports the claim, supports some parts but not others, or is insufficient to make a full determination.\n\nHere is the claim and the supporting information:\n\n**Claim to Evaluate:**\n\"{claim_text}\"\n\n**Questions and Answers for the Claim:**\n{questions_and_answers_json}\n\n**Previously Verified True Claims (for context):**\n{previously_true_claims}\n\n Finally, here is the additional context for the forecasts on violent conflicts, with the name of the hotspot regions, the average number of violent events in the last 3 months, the predicted number of violent events in the short term and the percentage increase in the number of violent events is the following:\n{hotspot_regions}\n. This data comes from ACLED Conflict Alert System: https://acleddata.com/conflict-alert-system/, so update accordingly the sources to the questions of the claims related to this data. If the list is empty, there is no data in this regard in this case."
 ```
 
 > Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
@@ -904,7 +946,7 @@ Prompt that will be used to rewrite each of the heading 2 sections of the origin
 *Suggested prompt*:
 
 ```json
-"You are an expert editor tasked with revising a report section based on a factual accuracy analysis. Your goal is to produce a corrected, well-written, and professionally toned narrative for the final report.\n\n**Instructions:**\n1.  Read the **Original Content** of the section.\n2.  Review the **Accuracy Analysis**, which contains a claim-by-claim evaluation (TRUE, FALSE, MIXTURE) of the original content, along with justifications and specific sources.\n3.  Rewrite the **Original Content** to create a new **Corrected Content**. You must:\n    -   Keep all information that was verified as TRUE.\n    -   Correct or remove information that was identified as FALSE, using the justification from the analysis.\n    -   Clarify and adjust information that was identified as a MIXTURE.\n    -   Ensure the final text is coherent, objective, and maintains a formal tone suitable for a security report.\n4.  As you rewrite, you must cite the sources provided in the **Accuracy Analysis** for all claims. Use footnote-style citations (e.g., [1], [2]).\n5.  Compile all of the sources you cited in the rewritten text. \n\n**Inputs:**\n\n**1. Section Title:**\n`{section_title}`\n\n**2. Original Content:**\n`{original_content}`\n\n**3. Accuracy Analysis:**\n`{accuracy_content}`\n\n**4. General Report Sources (for context only):**\n`{report_sources}`"
+"You are an expert editor tasked with revising a report section based on a factual accuracy analysis. Your goal is to produce a corrected, well-written, and professionally toned narrative for the final report. \n\n**Instructions:**\n1.  Read the **Original Content** of the section.\n2.  Review the **Accuracy Analysis**, which contains a claim-by-claim evaluation (TRUE, FALSE, MIXTURE) of the original content, along with justifications and specific sources.\n3.  Rewrite the **Original Content** to create a new **Corrected Content**. You must:\n    -   Keep all information that was verified as TRUE.\n    -   Correct or remove information that was identified as FALSE, using the justification from the analysis.\n    -   Clarify and adjust information that was identified as a MIXTURE.\n    -   Ensure the final text is coherent, objective, and maintains a formal tone suitable for a security report.\n4.  As you rewrite, you must cite the sources provided in the **Accuracy Analysis** for all claims. Use footnote-style citations (e.g., [1], [2]).\n5.  Compile all of the sources you cited in the rewritten text. \n\n**Inputs:**\n\n**1. Section Title:**\n`{section_title}`\n\n**2. Original Content:**\n`{original_content}`\n\n**3. Accuracy Analysis:**\n`{accuracy_content}`\n\n**4. General Report Sources (for context only):**\n`{report_sources}`"
 ```
 
 > Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
@@ -913,12 +955,12 @@ Prompt that will be used to rewrite each of the heading 2 sections of the origin
 
 Prompt that will be used to aggregate the section-by-section corrected report into one fluent, coherent report. Should contain an `{intermediate_report}` placeholder.
 
-*Recommended value*: prompt that properly instructs the LLM to create a coherent report out of a markdown report which contains a "Sources" heading in each section.
+*Recommended value*: prompt that properly instructs the LLM to create a coherent report out of a markdown report which contains a "Sources" heading in each section, and that indicates the LLM to include the sections `### Armed Conflict Probability Forecast (Conflict Forecast)` and `#### Predicted Increase in Violent Events in the Short Term (ACLED)` as-is.
 
 *Suggested prompt*:
 
 ```json
-"You are an expert technical editor specializing in consolidating and formatting reports. Your task is to process an intermediate markdown report, consolidate its sources, and produce a final, clean version.\n\n**Input Document Structure:**\nThe provided markdown document contains several sections, each starting with a level-2 heading (`##`). Each section contains:\n1.  Rewritten content with in-text, footnote-style citations (e.g., [1], [2]).\n2.  A subsection with a level-3 heading (`### Sources`) that lists the sources for that section. The numbering of these sources is local to each section and may be duplicated across the document.\n\n**Your Instructions:**\n1.  **Consolidate Sources:** Read all the `### Sources` subsections. Identify all unique sources from the entire document and create a single, consolidated list.\n2.  **Re-number Citations:** Re-number the consolidated sources sequentially starting from 1. Then, go through the main text of each section and update all in-text citations (e.g., `[1]`, `[2]`) to match the new, global numbering of the consolidated source list.\n3.  **Final Formatting:**\n    -   Remove all the intermediate `### Sources` subsections.\n    -   Create a single, final `## Sources` section at the very end of the document.\n    -   Populate this final section with the consolidated, de-duplicated, and correctly numbered list of sources.\n    -   Ensure the entire document is coherent and correctly formatted in markdown.\n\n**Input Document:**\n```markdown\n{intermediate_report}\n```\n\n**Output:**\nReturn only the full, corrected markdown text of the final report. Do not include any other commentary or explanation."
+"You are an expert technical editor specializing in consolidating and formatting reports. Your task is to process an intermediate markdown report, consolidate its sources, and produce a final, clean version.\n\n**Input Document Structure:**\nThe provided markdown document contains several sections, each starting with a level-2 heading (`##`). Each section contains:\n1.  Rewritten content with in-text, footnote-style citations (e.g., [1], [2]).\n2.  A subsection with a level-3 heading (`### Sources`) that lists the sources for that section. The numbering of these sources is local to each section and may be duplicated across the document.\n\n**Your Instructions:**\n1.  **Consolidate Sources:** Read all the `### Sources` subsections. Identify all unique sources from the entire document and create a single, consolidated list.\n2.  **Re-number Citations:** Re-number the consolidated sources sequentially starting from 1. Then, go through the main text of each section and update all in-text citations (e.g., `[1]`, `[2]`) to match the new, global numbering of the consolidated source list.\n3.  **Final Formatting:**\n    -   Remove all the intermediate `### Sources` subsections. \n   -   Keep the ordering and naming of the rest of the sections as-is. \n    -   Create a single, final `## Sources` section at the very end of the document.\n    -   Populate this final section with the consolidated, de-duplicated, and correctly numbered list of sources.\n    -   Ensure the entire document is coherent and correctly formatted in markdown.\n\n**Input Document:**\n```markdown\n{intermediate_report}\n```\n\n**Output:**\nReturn only the full, corrected markdown text of the final report. Do not include any other commentary or explanation."
 ```
 
 #### *llm_rewriter_config*

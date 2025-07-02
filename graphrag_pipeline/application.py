@@ -283,6 +283,24 @@ class Application:
 
                     self.logger.info(f"Generating security report for {country}")
 
+                    # Set environment variables for the script to access
+                    os.environ['GRAPHRAG_COUNTRY'] = country
+                    if self.output_directory:  # If output_directory is set, use it
+                        os.environ['GRAPHRAG_OUTPUT_DIR'] = self.output_directory  # Set the output directory for GraphRAG
+
+                    # Generate the forecast outputs that will be used in the report
+                    cast_script_path = f"pipeline.05_graphrag.forecast_generation"  # Set the path to the appropriate script
+                    if not importlib.util.find_spec(cast_script_path):  # Ensure the script path is valid
+                        self.logger.error(f"Module for retrieving forecast predictions not found.")
+                        break  # Break the loop if the module is not found
+                    try:
+                        self.logger.info(f"Executing script: {cast_script_path}")
+                        runpy.run_module(cast_script_path, run_name="__main__")
+                        self.logger.info(f"Successfully executed script for generating forecast outputs for {country}")
+                    except Exception as e:
+                        self.logger.error(f"Error executing script for generating forecast outputs for {country}: {str(e)}")
+                        continue  # Skip to the next country if the script fails
+
                     for retriever, config in self.retrieval_config.items():  # Iterate over all retrievers in the config file
                         if config['enabled'] is True:  # If retrieval is enabled for the retriever, do GraphRAG using that retriever
                             
@@ -295,11 +313,6 @@ class Application:
                             if not importlib.util.find_spec(script_path):
                                 self.logger.error(f"GraphRAG module for {retriever} not found.")
                                 continue  # Skip to the next retriever if the module is not found
-                            
-                            # Set environment variables for the script to access
-                            os.environ['GRAPHRAG_COUNTRY'] = country
-                            if self.output_directory:  # If output_directory is set, use it
-                                os.environ['GRAPHRAG_OUTPUT_DIR'] = self.output_directory  # Set the output directory for GraphRAG
                             
                             try:
                                 self.logger.info(f"Executing script: {script_path}")
@@ -324,16 +337,15 @@ class Application:
                             except Exception as e:
                                 self.logger.error(f"Error executing {script_path}: {e}")
 
-                            finally:
-                                # Clean up environment variables
-                                if 'GRAPHRAG_COUNTRY' in os.environ:
-                                    del os.environ['GRAPHRAG_COUNTRY']
-                                if 'GRAPHRAG_OUTPUT_DIR' in os.environ:
-                                    del os.environ['GRAPHRAG_OUTPUT_DIR']
-
                     else:
                         self.logger.debug(f"Skipping {retriever} - not enabled for GraphRAG")
                         continue  # Skip to the next retriever if GraphRAG for that retriever is not enabled
+                
+                # Clean up environment variables
+                if 'GRAPHRAG_COUNTRY' in os.environ:
+                    del os.environ['GRAPHRAG_COUNTRY']
+                if 'GRAPHRAG_OUTPUT_DIR' in os.environ:
+                    del os.environ['GRAPHRAG_OUTPUT_DIR']
             
             except ImportError as e:
                 self.logger.error(f"Could not import GraphRAG module: {str(e)}")

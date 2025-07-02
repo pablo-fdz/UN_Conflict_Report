@@ -11,9 +11,9 @@ if graphrag_pipeline_dir not in sys.path:
 
 # Utilities
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from typing import Union
+from typing import Tuple, Union
 import json
 from neo4j_graphrag.retrievers.base import Retriever
 from library.kg_indexer import KGIndexer
@@ -132,7 +132,8 @@ class GraphRAGConstructionPipeline:
             self, 
             retriever: Retriever,
             retriever_search_params: dict[str, any] = None,
-            country: str = None
+            country: str = None,
+            output_directory: str = None
         ):
         
         """
@@ -142,21 +143,56 @@ class GraphRAGConstructionPipeline:
             retriever (Retriever): The retriever used to find relevant context to pass to the LLM.
             country (str): The country for which the report is generated. Defaults to None, which uses an empty string in the query text.
             retriever_search_params (dict[str, any]): Configuration for the search parameters of the input retriever. Defaults to None, which uses the default search parameters.
+            output_directory (str): Optional directory where the forecasts included in the report will be searched for, under the `assets` subdirectory. If None, uses a default directory structure based on the country naming.
         
         Returns:
             str: The generated answer from the GraphRAG pipeline and the retrieved context (if context return is enabled).
         """
-        
+
+        # Use default output directory if none provided
+        if output_directory is None:
+            output_directory = self._get_default_output_directory(country)
+
         try:
                 
             # Get the initialized GraphRAG pipeline
             graphrag = self._create_graphrag_pipeline(retriever)
 
+            # Get the latest forecast data for the country to pass ACLED hotspot
+            # predictions into the report
+            forecast_data, _, _, _ = self._get_latest_forecast_data(output_directory)
+
+            # Initialize hotspot variables with default values
+            total_hotspots = 0
+            hotspot_regions = []
+
+            if forecast_data and forecast_data.get('acled_cast_analysis'):  # If ACLED CAST analysis is available
+                total_hotspots = forecast_data['acled_cast_analysis'].get('total_hotspots', 0)  # Get the total hotspots, default to 0 if not present
+                hotspot_regions = forecast_data['acled_cast_analysis'].get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
+                hotspot_regions_list = []
+                # For each of the hotspot regions, retrieve the name
+                for region in hotspot_regions:
+                    region_name = region.get('name', 'Unknown Region')
+                    hotspot_regions_list.append(region_name)  # Append the region name to the list
+
+            # Get current month and year, e.g., "July, 2025"
+            current_month_year = datetime.now().strftime("%B, %Y")
+
+            default_search_text = "Security events, conflicts, and political stability in {country}. Focus on the following conflict hotspots: {hotspot_regions_list}."
+
             # Format the search text for the retriever (i.e., the text that will be used to search the knowledge graph)
-            formatted_search_text = self.graphrag_config.get('search_text', '').format(country=country)  # Use the country in the search text if specified, otherwise use an empty string
+            formatted_search_text = self.graphrag_config.get('search_text', default_search_text).format(  # Use the country in the search text if specified, otherwise use an empty string
+                country=country,
+                hotspot_regions_list= ', '.join(hotspot_regions_list) if 'hotspot_regions_list' in locals() else ''  # Use the hotspot regions list if available, otherwise default to empty string
+            )  
 
             # Format the query text for generating the report with the input country
-            formatted_query_text = self.graphrag_config.get('query_text', '').format(country=country)  # Use the country in the query text if specified, otherwise use an empty string
+            formatted_query_text = self.graphrag_config.get('query_text', '').format(  # Use the information in the query text if specified, otherwise use an empty string
+                country=country,
+                current_month_year=current_month_year,  # Current month and year for the report
+                total_hotspots=total_hotspots if 'total_hotspots' in locals() else 0,  # Use the total hotspots if available, otherwise default to 0
+                hotspot_regions=hotspot_regions if 'hotspot_regions' in locals() else []  # Use the hotspot regions if available, otherwise default to empty list
+            )
             
             # Check rate limit before LLM call
             self.check_rate_limit()
@@ -238,6 +274,7 @@ class GraphRAGConstructionPipeline:
         report_content = self._format_markdown_report(
             answer=answer,
             country=country,
+            output_directory=output_directory,  # Pass the output directory for locating assets
             retriever_type=retriever_type,
             metadata=metadata
         )
@@ -308,10 +345,87 @@ class GraphRAGConstructionPipeline:
             general_path = os.path.join(reports_base, 'general')
             return general_path
 
+    def _get_latest_forecast_data(self, output_directory: str) -> Tuple[dict, str, str, str]:
+        """
+        Get the latest forecast data from ConflictForecast and ACLED for a given country.
+        
+        Args:
+            output_directory (str): Directory where the report will be saved (as well as the
+                forecast data in the `assets` subdirectory).
+            country (str): Country name to get the forecast for.
+            
+        Returns:
+            tuple: A tuple containing:
+                - dict: Forecast data containing conflict forecast prediction (`conflict_forecast_prediction` with float value) and ACLED CAST analysis.
+                - str: Path to the latest ConflictForecast time series plot.
+                - str: Path to the latest ACLED CAST analysis hotspots plot.
+                - str: Path to the latest forecast data JSON file.
+        """
+        
+        # Initialize variables to hold forecast data and chart paths
+        forecast_data = {}
+        line_chart_path = None
+        bar_chart_path = None
+        forecast_data_path = None
+        
+        try:
+            assets_dir = os.path.join(output_directory, 'assets')
+            os.makedirs(assets_dir, exist_ok=True)  # Ensure assets directory exists
+
+            # Find the most recent forecast JSON file
+            forecast_files = [f for f in os.listdir(assets_dir) if f.startswith('forecast_') and f.endswith('.json')]
+
+            if forecast_files:
+                latest_file = max(forecast_files, key=lambda f: os.path.getmtime(os.path.join(assets_dir, f)))
+                latest_filepath = os.path.join(assets_dir, latest_file)
+                forecast_data_path = latest_filepath  # Store the path to the latest forecast data file
+
+                # Load the JSON data from the file
+                with open(latest_filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # Safely extract the required information
+                forecast_data = {
+                    "conflict_forecast_prediction": data.get("conflict_forecast_prediction", None),  # Defafults to None if not present
+                    "acled_cast_analysis": data.get("acled_cast_analysis", None)  # Defaults to None if not present (e.g., if region in Europe or North America)
+                }
+
+            else:
+                print(f"Warning: No forecast files found in {assets_dir}")
+
+            # Find the most recent line chart
+            line_chart_files = [f for f in os.listdir(assets_dir) if f.startswith(f'LineChart_') and f.endswith('.svg')]
+            if line_chart_files:
+                latest_line_chart = max(line_chart_files, key=lambda f: os.path.getmtime(os.path.join(assets_dir, f)))
+                line_chart_path = os.path.join(assets_dir, latest_line_chart)
+            else:
+                print(f"Warning: No line chart found in {assets_dir}")
+
+            # Find the most recent bar chart
+            bar_chart_files = [f for f in os.listdir(assets_dir) if f.startswith(f'BarChart_') and f.endswith('.svg')]
+            if bar_chart_files:
+                latest_bar_chart = max(bar_chart_files, key=lambda f: os.path.getmtime(os.path.join(assets_dir, f)))
+                bar_chart_path = os.path.join(assets_dir, latest_bar_chart)
+            else:
+                print(f"Warning: No bar chart found in {assets_dir}")
+
+            return forecast_data, line_chart_path, bar_chart_path, forecast_data_path
+
+        except FileNotFoundError:
+            print(f"Warning: Asset file could not be found.")
+            return {}, None, None
+        except json.JSONDecodeError:
+            print(f"Warning: Error decoding JSON from forecast file.")
+            return {}, None, None
+        except Exception as e:
+            print(f"An unexpected error occurred in _get_latest_forecast_data: {e}")
+            return {}, None, None
+
     def _format_markdown_report(
         self, 
         answer: str, 
-        country: str = None, 
+        country: str = None,
+        output_directory: str = None,
         retriever_type: str = None,
         metadata: dict = None
     ) -> str:
@@ -321,6 +435,8 @@ class GraphRAGConstructionPipeline:
         Args:
             answer (str): The generated answer
             country (str): Country name
+            output_directory (str): Directory where the report will be saved (for 
+                locating the assets).
             retriever_type (str): Retriever type used
             metadata (dict): Additional metadata
             
@@ -330,6 +446,121 @@ class GraphRAGConstructionPipeline:
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        # ===== 1. Get and format the latest forecast data for the report =====
+
+        # Get the predictions data
+        forecast_data, line_chart_path, bar_chart_path, forecast_data_path = self._get_latest_forecast_data(output_directory)
+
+        processed_answer = answer # Initialize processed_answer with the original answer
+
+        # --- Create and inject the "Conflict Forecast" section ---
+        if line_chart_path and forecast_data.get('conflict_forecast_prediction'):
+            conflict_forecast_prediction = forecast_data['conflict_forecast_prediction']
+            
+            # Create the structured text for this section
+            conflict_forecast_text = [
+                "",  # Initialize with a newline for spacing 
+                "### Armed Conflict Probability Forecast (Conflict Forecast)",
+                ""  # Initialize with an empty line for spacing
+            ]
+            
+            conflict_forecast_text.append(f"According to [ConflictForecast](https://conflictforecast.org/), the predicted probability of armed conflict in {country} in the next 3 months is of {conflict_forecast_prediction:.2%}.")
+            conflict_forecast_text.append("")
+            conflict_forecast_text.append(f"*This prediction represents the risk that a country suffers an outbreak of armed conflict within the next three months, i.e. that the country goes from no fatalities to over 0.5 fatalities per one million inhabitants within a time horizon of three months.*")
+            conflict_forecast_text.append("")
+
+            # Add more structured text here as needed.
+            conflict_forecast_text.append(f"The following chart displays the armed conflict risk trend since 2020 until the present day:")
+
+            # Make chart path relative for markdown file
+            relative_line_chart_path = os.path.join('assets', os.path.basename(line_chart_path))
+            conflict_forecast_text.extend([
+                "",
+                f"![Conflict Forecast Time Series]({relative_line_chart_path})",
+                ""
+            ])
+            
+            conflict_forecast_section = "\n".join(conflict_forecast_text)
+            
+            # Inject the section after "## 3. Forward Outlook" and the potential
+            # introductory text to the section, but before the next H3 or H2 section
+            # Check regex101 (https://regex101.com/v) in case of doubts
+            processed_answer = re.sub(
+                r"(## 3\. Forward Outlook[\s\S]*?)(?=\n###|\n##)",
+                r"\1" + conflict_forecast_section,
+                processed_answer,
+                count=1,
+                flags=re.DOTALL  # Use DOTALL to match across newlines
+            )
+        else:
+            print("Warning: No Conflict Forecast time series plot and/or armed conflict risk predictions found. The section will not be included in the report.")
+
+        # --- Create and inject the "ACLED" section ---
+        if bar_chart_path and forecast_data.get('acled_cast_analysis'):
+            acled_analysis = forecast_data['acled_cast_analysis']  
+            forecast_horizon_months = acled_analysis.get('forecast_horizon_months', 2)  # Get the forecast horizon in months, default to 2 if not present
+            total_hotspots = acled_analysis.get('total_hotspots', 0)  # Get the total hotspots, default to 0 if not present
+            hotspot_regions = acled_analysis.get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
+
+            # Create the structured text for this section
+            acled_forecast_text = [
+                "",  # Initialize with a newline for spacing
+                "#### Predicted Increase in Violent Events in the Short Term (ACLED)",
+                ""
+            ]
+
+            # Get current month and year, e.g., "July, 2025"
+            now = datetime.now()
+
+            # Get next month and year, e.g., "August, 2025"
+            next_month_year = (now.replace(day=1) + timedelta(days=32)).strftime("%B, %Y")  # Go to the first day of the current month, add 32 days to get into the next month, and then format it.
+
+            if total_hotspots > 0:
+                acled_forecast_text.append(f"[ACLED CAST](https://acleddata.com/conflict-alert-system/) predicts {total_hotspots} ADM1 regions in {country} to be hotspots for violent events in the next calendar month ({next_month_year}).")
+                acled_forecast_text.append("")
+                acled_forecast_text.append("*An ADM1 region is considered to be a hotspot if the predicted increase in the number of violent events in the next month compared to the 3-month average is at least of 25%.*")
+                acled_forecast_text.append("")
+
+            acled_forecast_text.append("The chart below shows regions with a predicted change in violent events.")
+
+            # Make chart path relative for markdown file
+            relative_bar_chart_path = os.path.join('assets', os.path.basename(bar_chart_path))
+            acled_forecast_text.extend([
+                "",
+                f"![ACLED Hotspots Bar Chart]({relative_bar_chart_path})",
+                ""
+            ])
+
+            if total_hotspots > 0:
+                acled_forecast_text.append(f"Considering the hotspot criteria, the following regions are expected to have a significant increase in violent events in {next_month_year}:")
+                acled_forecast_text.append("")  # Add a blank line for spacing before the table
+
+                # Add Markdown table header
+                acled_forecast_text.append("| Region | Avg. # Violent Events (3 months) | Forecasted # Violent Events | % Increase |")
+                acled_forecast_text.append("|---|---|---|---|")
+                for region in hotspot_regions:
+                    name = region.get('name', 'Unknown Region')
+                    avg1 = region.get('avg1', 0)  # Average number of violent events in the last 3 months
+                    total_forecast = region.get('total_forecast', 0)  # Forecasted number of violent events 2 months ahead, including current month
+                    percent_increase = region.get('percent_increase1', 0)  # Percent increase in violent events
+                    acled_forecast_text.append(f"| {name} | {round(avg1)} | {round(total_forecast)} | {round(percent_increase, 1)}% |")
+
+            acled_forecast_section = "\n".join(acled_forecast_text)
+            
+            # Inject the section after any intro text in "### Subnational Perspective", 
+            # but before the next H4 or H3 heading
+            processed_answer = re.sub(
+                r"(### Subnational Perspective[\s\S]*?)(?=\n####|\n###)",
+                r"\1" + acled_forecast_section,
+                processed_answer,
+                count=1,
+                flags=re.DOTALL  # Use DOTALL to match across newlines
+            )
+        else:
+            print("Warning: No ACLED CAST analysis and/or bar chart found. The section will not be included in the report.")
+
+        # ===== 2. Format the markdown report =====
+
         # Build header
         title = f"Security Report"
         if country:
@@ -339,11 +570,17 @@ class GraphRAGConstructionPipeline:
             f"# {title}",
             "",
             f"**Generated on:** {timestamp}",
+            ""
         ]
         
         if retriever_type:
             markdown_lines.append(f"**Retriever:** {retriever_type}")
+            markdown_lines.append("")
             
+        if forecast_data_path:
+            markdown_lines.append(f"**Forecast data path:** {os.path.basename(forecast_data_path)}")
+            markdown_lines.append("")
+
         if metadata:
             markdown_lines.append("**Configuration:**")
             for key, value in metadata.items():
@@ -353,7 +590,7 @@ class GraphRAGConstructionPipeline:
             "",
             "---",
             "",
-            answer,
+            processed_answer,  # Use the processed answer with injected sections
             "",
             "---",
             "",

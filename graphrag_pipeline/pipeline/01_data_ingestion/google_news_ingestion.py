@@ -1,12 +1,4 @@
-from typing import Tuple, List, Dict, Optional
-import polars as pl
-import random
-import time
-import httpx
-import trafilatura
-import base64
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path 
