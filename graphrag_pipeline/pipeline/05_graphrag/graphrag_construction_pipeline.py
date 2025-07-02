@@ -365,6 +365,7 @@ class GraphRAGConstructionPipeline:
         forecast_data = {}
         line_chart_path = None
         bar_chart_path = None
+        forecast_data_path = None
         
         try:
             assets_dir = os.path.join(output_directory, 'assets')
@@ -406,7 +407,7 @@ class GraphRAGConstructionPipeline:
             else:
                 print(f"Warning: No bar chart found in {assets_dir}")
 
-            return forecast_data, line_chart_path, bar_chart_path
+            return forecast_data, line_chart_path, bar_chart_path, forecast_data_path
 
         except FileNotFoundError:
             print(f"Warning: Asset file could not be found.")
@@ -446,7 +447,7 @@ class GraphRAGConstructionPipeline:
         # ===== 1. Get and format the latest forecast data for the report =====
 
         # Get the predictions data
-        forecast_data, line_chart_path, bar_chart_path = self._get_latest_forecast_data(output_directory)
+        forecast_data, line_chart_path, bar_chart_path, forecast_data_path = self._get_latest_forecast_data(output_directory)
 
         processed_answer = answer # Initialize processed_answer with the original answer
 
@@ -567,11 +568,17 @@ class GraphRAGConstructionPipeline:
             f"# {title}",
             "",
             f"**Generated on:** {timestamp}",
+            ""
         ]
         
         if retriever_type:
             markdown_lines.append(f"**Retriever:** {retriever_type}")
+            markdown_lines.append("")
             
+        if forecast_data_path:
+            markdown_lines.append(f"**Forecast data path:** {os.path.basename(forecast_data_path)}")
+            markdown_lines.append("")
+
         if metadata:
             markdown_lines.append("**Configuration:**")
             for key, value in metadata.items():
