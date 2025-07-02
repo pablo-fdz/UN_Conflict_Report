@@ -261,6 +261,7 @@ class GraphRAGConstructionPipeline:
         report_content = self._format_markdown_report(
             answer=answer,
             country=country,
+            output_directory=output_directory,  # Pass the output directory for locating assets
             retriever_type=retriever_type,
             metadata=metadata
         )
@@ -407,7 +408,8 @@ class GraphRAGConstructionPipeline:
     def _format_markdown_report(
         self, 
         answer: str, 
-        country: str = None, 
+        country: str = None,
+        output_directory: str = None,
         retriever_type: str = None,
         metadata: dict = None
     ) -> str:
@@ -417,6 +419,8 @@ class GraphRAGConstructionPipeline:
         Args:
             answer (str): The generated answer
             country (str): Country name
+            output_directory (str): Directory where the report will be saved (for 
+                locating the assets).
             retriever_type (str): Retriever type used
             metadata (dict): Additional metadata
             
@@ -426,6 +430,114 @@ class GraphRAGConstructionPipeline:
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        # ===== 1. Get and format the latest forecast data for the report =====
+
+        # Get the predictions data
+        forecast_data, line_chart_path, bar_chart_path = self._get_latest_forecast_data(output_directory)
+
+        processed_answer = answer # Initialize processed_answer with the original answer
+
+        # --- Create and inject the "Conflict Forecast" section ---
+        if line_chart_path and forecast_data.get('conflict_forecast_prediction'):
+            conflict_forecast_prediction = forecast_data['conflict_forecast_prediction']
+            
+            # Create the structured text for this section
+            conflict_forecast_text = [
+                "",  # Initialize with a newline for spacing 
+                "### Armed Conflict Probability Forecast (Conflict Forecast)",
+                ""  # Initialize with an empty line for spacing
+            ]
+            
+            conflict_forecast_text.append(f"According to [ConflictForecast](https://conflictforecast.org/), the predicted probability of armed conflict in {country} in the next 3 months is of {conflict_forecast_prediction:.2%}.")
+            
+            conflict_forecast_text.append(f"*This prediction represents the risk that a country suffers an outbreak of armed conflict within the next three months, i.e. that the country goes from no fatalities to over 0.5 fatalities per one million inhabitants within a time horizon of three months.*")
+
+            # Add more structured text here as needed.
+            conflict_forecast_text.append(f"The following chart displays the armed conflict risk trend since 2020 until the present day:")
+
+            # Make chart path relative for markdown file
+            relative_line_chart_path = os.path.join('assets', os.path.basename(line_chart_path))
+            conflict_forecast_text.extend([
+                "",
+                f"![Conflict Forecast Time Series]({relative_line_chart_path})",
+                ""
+            ])
+            
+            conflict_forecast_section = "\n".join(conflict_forecast_text)
+            
+            # Inject the section after "## 3. Forward Outlook" and the potential
+            # introductory text to the section, but before the next H3 or H2 section
+            # Check regex101 (https://regex101.com/v) in case of doubts
+            processed_answer = re.sub(
+                r"(## 3\. Forward Outlook[\s\S]*?)(?=\n###|\n##)",
+                r"\1" + conflict_forecast_section,
+                processed_answer,
+                count=1,
+                flags=re.DOTALL  # Use DOTALL to match across newlines
+            )
+        else:
+            print("Warning: No Conflict Forecast time series plot and/or armed conflict risk predictions found. The section will not be included in the report.")
+
+        # --- Create and inject the "ACLED" section ---
+        if bar_chart_path and forecast_data.get('acled_cast_analysis'):
+            acled_analysis = forecast_data['acled_cast_analysis']  
+            forecast_horizon_months = acled_analysis['acled_cast_analysis'].get('forecast_horizon_months', 2)  # Get the forecast horizon in months, default to 2 if not present
+            total_hotspots = acled_analysis.get('total_hotspots', 0)  # Get the total hotspots, default to 0 if not present
+            hotspot_regions = forecast_data['acled_cast_analysis'].get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
+
+            # Create the structured text for this section
+            acled_forecast_text = [
+                "",  # Initialize with a newline for spacing
+                "#### Predicted Increase in Violent Events in the Short Term (ACLED)",
+                ""
+            ]
+
+            # Get current month and year, e.g., "July, 2025"
+            now = datetime.now()
+            current_month_year = now.strftime("%B, %Y")
+
+            # Get next month and year, e.g., "August, 2025"
+            next_month_year = (now.replace(day=1) + datetime.timedelta(days=32)).strftime("%B, %Y")  # Go to the first day of the current month, add 32 days to get into the next month, and then format it.
+
+            if total_hotspots > 0:
+                acled_forecast_text.append(f"[ACLED CAST](https://acleddata.com/conflict-alert-system/) predicts {total_hotspots} ADM1 regions in {country} to be hotspots for violent events in the next calendar month ({next_month_year}).")
+                acled_forecast_text.append("*An ADM1 region is considered to be a hotspot if the predicted increase in the number of violent events in the next month compared to the 3-month average is at least of 25%.*")
+
+            acled_forecast_text.append("The chart below shows regions with a predicted increase in violent events.")
+
+            # Make chart path relative for markdown file
+            relative_bar_chart_path = os.path.join('assets', os.path.basename(bar_chart_path))
+            acled_forecast_text.extend([
+                "",
+                f"![ACLED Hotspots Bar Chart]({relative_bar_chart_path})",
+                ""
+            ])
+
+            if total_hotspots > 0:
+                acled_forecast_text.append(f"Considering the hotspot criteria, the following regions are expected to have a significant increase in violent events in {next_month_year}:")
+                for region in hotspot_regions:
+                    name = region.get('name', 'Unknown Region')
+                    avg1 = region.get('avg1', 0)  # Average number of violent events in the last 3 months
+                    total_forecast = region.get('total_forecast', 0)  # Forecasted number of violent events 2 months ahead, including current month
+                    percent_increase = region.get('percent_increase', 0)  # Percent increase in violent events
+                    acled_forecast_text.append(f"- **{name}**: Average of {round(avg1)} violent events in the last 3 months, forecasted {round(total_forecast)} violent events in {next_month_year} ({round(percent_increase, 1)}% increase compared to the average).")
+
+            acled_forecast_section = "\n".join(acled_forecast_text)
+            
+            # Inject the section after any intro text in "### Subnational Perspective", 
+            # but before the next H4 or H3 heading
+            processed_answer = re.sub(
+                r"(### Subnational Perspective[\s\S]*?)(?=\n####|\n###)",
+                r"\1" + acled_forecast_section,
+                processed_answer,
+                count=1,
+                flags=re.DOTALL  # Use DOTALL to match across newlines
+            )
+        else:
+            print("Warning: No ACLED CAST analysis and/or bar chart found. The section will not be included in the report.")
+
+        # ===== 2. Format the markdown report =====
+
         # Build header
         title = f"Security Report"
         if country:
@@ -449,7 +561,7 @@ class GraphRAGConstructionPipeline:
             "",
             "---",
             "",
-            answer,
+            processed_answer,  # Use the processed answer with injected sections
             "",
             "---",
             "",
