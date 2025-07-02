@@ -712,11 +712,11 @@ High-level instructions for the LLM on its role and constraints (e.g., "Answer o
 
 ### search_text
 
-The initial, broad query used to kick off the retrieval process from the knowledge graph. This search text will be used to retrieve the most relevant context, through the cosine similarity of the search text's embedding and (with hybrid retrievers) with full text search. The `{country}` placeholder will be replaced with the target country at runtime.
+The initial, broad query used to kick off the retrieval process from the knowledge graph. This search text will be used to retrieve the most relevant context, through the cosine similarity of the search text's embedding and (with hybrid retrievers) with full text search. The `{country}` placeholder will be replaced with the target country at runtime. The `{hotspots_regions_list}` will be replaced with a comma-separated-list of ADM1 regions for which the number of violent events is expected to increase.
 
 *Trade-offs*: A broader query retrieves more context, which can lead to a more comprehensive report but also introduces more noise. A narrower query is more focused but might miss relevant tangential information.
 
-*Recommended value*: The default `"Security events, conflicts, and political stability in {country}."` is a good balance. Adjust it if you need to focus the report on a more specific topic (e.g., "Economic stability and trade agreements in {country}").
+*Recommended value*: The default `"Security events, conflicts, and political stability in {country}. Focus on the following conflict hotspots: {hotspot_regions_list}."` is a good balance. Adjust it if you need to focus the report on a more specific topic (e.g., "Economic stability and trade agreements in {country}").
 
 ### query_text
 

@@ -11,7 +11,7 @@ if graphrag_pipeline_dir not in sys.path:
 
 # Utilities
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from typing import Tuple, Union
 import json
@@ -158,20 +158,33 @@ class GraphRAGConstructionPipeline:
             # Get the initialized GraphRAG pipeline
             graphrag = self._create_graphrag_pipeline(retriever)
 
-            # Format the search text for the retriever (i.e., the text that will be used to search the knowledge graph)
-            formatted_search_text = self.graphrag_config.get('search_text', '').format(country=country)  # Use the country in the search text if specified, otherwise use an empty string
-
             # Get the latest forecast data for the country to pass ACLED hotspot
             # predictions into the report
             forecast_data, _, _ = self._get_latest_forecast_data(output_directory)
 
-            if forecast_data:
-                if forecast_data.get('acled_cast_analysis'):  # If ACLED CAST analysis is available
-                    total_hotspots = forecast_data['acled_cast_analysis'].get('total_hotspots', 0)  # Get the total hotspots, default to 0 if not present
-                    hotspot_regions = forecast_data['acled_cast_analysis'].get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
+            # Initialize hotspot variables with default values
+            total_hotspots = 0
+            hotspot_regions = []
+
+            if forecast_data and forecast_data.get('acled_cast_analysis'):  # If ACLED CAST analysis is available
+                total_hotspots = forecast_data['acled_cast_analysis'].get('total_hotspots', 0)  # Get the total hotspots, default to 0 if not present
+                hotspot_regions = forecast_data['acled_cast_analysis'].get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
+                hotspot_regions_list = []
+                # For each of the hotspot regions, retrieve the name
+                for region in hotspot_regions:
+                    region_name = region.get('name', 'Unknown Region')
+                    hotspot_regions_list.append(region_name)  # Append the region name to the list
 
             # Get current month and year, e.g., "July, 2025"
             current_month_year = datetime.now().strftime("%B, %Y")
+
+            default_search_text = "Security events, conflicts, and political stability in {country}. Focus on the following conflict hotspots: {hotspot_regions_list}."
+
+            # Format the search text for the retriever (i.e., the text that will be used to search the knowledge graph)
+            formatted_search_text = self.graphrag_config.get('search_text', default_search_text).format(  # Use the country in the search text if specified, otherwise use an empty string
+                country=country,
+                hotspot_regions_list= ', '.join(hotspot_regions_list) if 'hotspot_regions_list' in locals() else ''  # Use the hotspot regions list if available, otherwise default to empty string
+            )  
 
             # Format the query text for generating the report with the input country
             formatted_query_text = self.graphrag_config.get('query_text', '').format(  # Use the information in the query text if specified, otherwise use an empty string
@@ -481,9 +494,9 @@ class GraphRAGConstructionPipeline:
         # --- Create and inject the "ACLED" section ---
         if bar_chart_path and forecast_data.get('acled_cast_analysis'):
             acled_analysis = forecast_data['acled_cast_analysis']  
-            forecast_horizon_months = acled_analysis['acled_cast_analysis'].get('forecast_horizon_months', 2)  # Get the forecast horizon in months, default to 2 if not present
+            forecast_horizon_months = acled_analysis.get('forecast_horizon_months', 2)  # Get the forecast horizon in months, default to 2 if not present
             total_hotspots = acled_analysis.get('total_hotspots', 0)  # Get the total hotspots, default to 0 if not present
-            hotspot_regions = forecast_data['acled_cast_analysis'].get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
+            hotspot_regions = acled_analysis.get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
 
             # Create the structured text for this section
             acled_forecast_text = [
@@ -497,7 +510,7 @@ class GraphRAGConstructionPipeline:
             current_month_year = now.strftime("%B, %Y")
 
             # Get next month and year, e.g., "August, 2025"
-            next_month_year = (now.replace(day=1) + datetime.timedelta(days=32)).strftime("%B, %Y")  # Go to the first day of the current month, add 32 days to get into the next month, and then format it.
+            next_month_year = (now.replace(day=1) + timedelta(days=32)).strftime("%B, %Y")  # Go to the first day of the current month, add 32 days to get into the next month, and then format it.
 
             if total_hotspots > 0:
                 acled_forecast_text.append(f"[ACLED CAST](https://acleddata.com/conflict-alert-system/) predicts {total_hotspots} ADM1 regions in {country} to be hotspots for violent events in the next calendar month ({next_month_year}).")

@@ -29,7 +29,7 @@ The pipeline is designed with a modular architecture, separating concerns into d
 -   Install dependencies: `pip install -r requirements.txt`
 -   A Google Gemini API key. You can get a free one [here](https://aistudio.google.com/app/apikey).
 -   A Neo4j database. A free cloud-hosted instance from [Neo4j Aura](https://neo4j.com/product/auradb/) is recommended. A self-hosted instance is also possible but may require minor code adjustments.
--   Google Chrome installed to generate the `.svg` plots (through `plotly`) included in the report.
+-   Google Chrome installed to generate the `.svg` plots (through `plotly` and `kaleido`) included in the report.
 
 ### 2. Configuration
 
