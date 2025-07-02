@@ -587,16 +587,6 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             # Format the base evaluation prompt with the previously true claims
                             # This will be used to provide context for the evaluation
                             base_eval_prompt_template = configs['evaluation_config']['accuracy_evaluation']['base_eval_prompt']   # Get the base evaluation prompt for the accuracy evaluation from the configuration files
-                            try:
-                                base_eval_prompt = base_eval_prompt_template.replace("{previously_true_claims}", true_claims_str)  # Use replace instead of format to avoid errors with missing keys
-                            except KeyError as e:
-                                raise KeyError(f"Missing key in base_eval_prompt: {e}. Please ensure the prompt is correctly formatted with all required placeholders.")
-                            
-                            # If hotspot_regions data is available, add it to the base evaluation prompt
-                            if hotspot_regions:
-                                base_eval_prompt = base_eval_prompt.replace("{hotspot_regions}", json.dumps(forecast_data, indent=2))
-                            else:
-                                base_eval_prompt = base_eval_prompt.replace("{hotspot_regions}", "No hotspot regions data available.")
 
                             # Check and enforce rate limit before the evaluation call
                             check_rate_limit()
@@ -605,7 +595,9 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 llm_evaluator=components['llm_evaluator'],
                                 claim_text=claim_data["claim"],
                                 questions_and_answers=claim_data["questions"],  # Here we will pass the dictionary with all of the questions and the corresponding answers and sources associated with a claim
-                                base_eval_prompt=base_eval_prompt,
+                                base_eval_prompt=base_eval_prompt_template,
+                                previously_true_claims=true_claims_str,
+                                hotspot_regions_data=hotspot_regions,
                                 structured_output=True
                             )
                             llm_usage += 1  # Increment LLM usage for each claim evaluation

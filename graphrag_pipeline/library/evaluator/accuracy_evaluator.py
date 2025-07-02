@@ -118,7 +118,7 @@ class AccuracyEvaluator:
 
         return questions_dict
 
-    def evaluate_one_claim(self, llm_evaluator: LLMInterface, claim_text: str, questions_and_answers: dict, base_eval_prompt: str, structured_output: bool = False) -> Dict:
+    def evaluate_one_claim(self, llm_evaluator: LLMInterface, claim_text: str, questions_and_answers: dict, base_eval_prompt: str, previously_true_claims: str, hotspot_regions_data: list = None, structured_output: bool = False) -> Dict:
         """
         Evaluates a single claim using an LLM.
 
@@ -127,6 +127,8 @@ class AccuracyEvaluator:
             claim_text: The text of the claim to evaluate.
             questions_and_answers: A dictionary of questions and answers related to the claim.
             base_eval_prompt: The prompt template for evaluating a claim.
+            previously_true_claims: A string of previously verified true claims.
+            hotspot_regions_data: Optional list of hotspot region data.
             structured_output: Flag to determine if the LLM should return structured output.
 
         Returns:
@@ -135,9 +137,17 @@ class AccuracyEvaluator:
         # Format the Q&A for the prompt
         q_and_a_str = json.dumps(questions_and_answers, indent=2)
 
+        # Format hotspot regions data if available
+        hotspot_str = json.dumps(hotspot_regions_data, indent=2) if hotspot_regions_data else "No hotspot regions data available."
+
         try:
-            # Create the prompt and format it by inserting the claim text and Q&A
-            prompt = base_eval_prompt.format(claim_text=claim_text, questions_and_answers_json=q_and_a_str)
+            # Create the prompt and format it by inserting all placeholders at once
+            prompt = base_eval_prompt.format(
+                claim_text=claim_text, 
+                questions_and_answers_json=q_and_a_str,
+                previously_true_claims=previously_true_claims,
+                hotspot_regions=hotspot_str
+            )
         except KeyError as e:
             raise KeyError(f"Missing key in base_eval_prompt: {e}. Please ensure the prompt is correctly formatted with all required placeholders.")
 
@@ -254,13 +264,15 @@ class AccuracyEvaluator:
                 report_lines.append(f"\n### Claim {i+1}: {conclusion}")
                 report_lines.append(f"> {claim_text}")
                 if justification and conclusion in ["FALSE", "MIXTURE"]:
+                    report_lines.append("")
                     report_lines.append(f"**Justification:** {justification}")
                 if unique_sources:
+                    report_lines.append("")
                     report_lines.append(f"**Sources:**")
                     for src in unique_sources:
-                        report_lines.append(f"> - {src}")
+                        report_lines.append(f"- {src}")
                 else:  # If there are no sources, indicate "N/A"
-                    report_lines.append(f"**Source:** N/A")
+                    report_lines.append(f"**Source:** N/A or ACLED CAST")
             
             report_lines.append("\n---")
 
