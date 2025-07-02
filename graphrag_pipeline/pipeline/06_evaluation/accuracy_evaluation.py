@@ -374,8 +374,37 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
             print(f"\n=== Evaluating Report: {os.path.basename(report_path)} ===\n")
 
+            # --- Logic to get forecast data that was originally passed to the LLM ---
+            forecast_data = None
+            hotspot_regions = None
+            try:
+                with open(report_path, 'r', encoding='utf-8') as f:
+                    original_report_content_for_forecast = f.read()
+                
+                forecast_path_match = re.search(r"\*\*Forecast data path:\*\* (.*\.json)", original_report_content_for_forecast)
+                if forecast_path_match:
+                    forecast_filename = forecast_path_match.group(1).strip()
+                    # The assets folder is in the same directory as the original report
+                    assets_dir = Path(report_path).parent / 'assets'
+                    forecast_filepath = assets_dir / forecast_filename
+                    if forecast_filepath.is_file():
+                        with open(forecast_filepath, 'r', encoding='utf-8') as f:
+                            forecast_data = json.load(f)
+                        print(f"Loaded forecast data from: {forecast_filepath}")
+                        if forecast_data['acled_cast_analysis']:
+                            acled_cast_analysis = forecast_data['acled_cast_analysis']
+                            hotspot_regions = acled_cast_analysis.get('hotspot_regions', None)
+                    else:
+                        print(f"Warning: Forecast file not found at {forecast_filepath}")
+            except Exception as e:
+                print(f"Warning: Could not load forecast data. Error: {e}")
+
             # Extract each section as different dictionary entries
             sections = components['report_processor'].get_sections(file_path=report_path)  # sections: Dict[str, str] (key is section title, value is section content)
+
+            # Store the content of sections to be skipped during evaluation (non-LLM-generated sections)
+            conflict_forecast_section_content = ""
+            acled_section_content = ""
 
             # Iterate over each retriever class and initialize it
             for retriever_name, retriever_instance in retriever_classes.items():
@@ -391,9 +420,33 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 for section_title, section_content in sections.items():
                     
                     # Avoid evaluating 'Sources' and 'References' sections
-                    if section_title.lower() in ['sources', 'references']:
+                    if 'sources' in section_title.lower() or 'references' in section_title.lower():
+                        print(f"Skipping section: {section_title}")
                         continue  # Skip these sections
                     
+                    # --- Logic to find, store, and remove forecast sections before evaluation ---
+                    
+                    # Pattern to find the "Conflict Forecast" section (H3) and its content until the next H3 or H2
+                    conflict_forecast_pattern = r"(\n?### Armed Conflict Probability Forecast \(Conflict Forecast\)[\s\S]*?)(?=\n###|\n##|$)"
+                    conflict_match = re.search(conflict_forecast_pattern, section_content, re.DOTALL)
+                    if conflict_match:
+                        conflict_forecast_section_content = conflict_match.group(1).strip()
+                        # Remove the section from the content to be evaluated
+                        section_content = section_content.replace(conflict_match.group(1), "")
+
+                    # Pattern to find the "ACLED" section (H4) and its content until the next H4 or H3
+                    acled_pattern = r"(\n?#### Predicted Increase in Violent Events in the Short Term \(ACLED\)[\s\S]*?)(?=\n####|\n###|$)"
+                    acled_match = re.search(acled_pattern, section_content, re.DOTALL)
+                    if acled_match:
+                        acled_section_content = acled_match.group(1).strip()
+                        # Remove the section from the content to be evaluated
+                        section_content = section_content.replace(acled_match.group(1), "")
+
+                    # If section content is empty after removing subsections, skip it
+                    if not section_content.strip():
+                        print(f"Skipping section '{section_title}' as it is empty after removing forecast content.")
+                        continue
+
                     print(f"Processing section: {section_title}")
                     print(f"First 30 characters of section content: {section_content[:30]}...")  # Debugging output
                     
@@ -539,6 +592,12 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             except KeyError as e:
                                 raise KeyError(f"Missing key in base_eval_prompt: {e}. Please ensure the prompt is correctly formatted with all required placeholders.")
                             
+                            # If hotspot_regions data is available, add it to the base evaluation prompt
+                            if hotspot_regions:
+                                base_eval_prompt = base_eval_prompt.replace("{hotspot_regions}", json.dumps(forecast_data, indent=2))
+                            else:
+                                base_eval_prompt = base_eval_prompt.replace("{hotspot_regions}", "No hotspot regions data available.")
+
                             # Check and enforce rate limit before the evaluation call
                             check_rate_limit()
 
@@ -681,7 +740,33 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         llm_usage += 1
 
                         if final_report_response:
+                            
                             final_report_content = final_report_response.content  # Get the final report content from the LLM response
+                            
+                            # --- Inject the original structured forecast sections into the final report ---
+                            if conflict_forecast_section_content:
+                                # Inject the "Conflict Forecast" section after "## 3. Forward Outlook",
+                                # using the same logic as for the original report
+                                final_report_content = re.sub(
+                                    r"(## 3\. Forward Outlook[\s\S]*?)(?=\n###|\n##)",
+                                    r"\1\n" + conflict_forecast_section_content,
+                                    final_report_content,
+                                    count=1,
+                                    flags=re.IGNORECASE | re.DOTALL
+                                )
+                                print("Injected 'Conflict Forecast' section into the final report.")
+
+                            if acled_section_content:
+                                # Inject the "ACLED" section after "### Subnational Perspective"
+                                final_report_content = re.sub(
+                                    r"(### Subnational Perspective[\s\S]*?)(?=\n####|\n###)",
+                                    r"\1\n" + acled_section_content,
+                                    final_report_content,
+                                    count=1,
+                                    flags=re.IGNORECASE | re.DOTALL
+                                )
+                                print("Injected 'ACLED' section into the final report.")
+                            
                             # Save the final, corrected report
                             acc_evaluator.save_corrected_report(
                                 report_content=final_report_content,

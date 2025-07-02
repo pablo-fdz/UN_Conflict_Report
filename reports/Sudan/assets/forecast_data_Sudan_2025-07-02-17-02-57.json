@@ -1,6 +1,6 @@
 {
   "country": "Sudan",
-  "analysis_date": "2025-07-02-10-43-57",
+  "analysis_date": "2025-07-02-17-02-54",
   "data_sources": {
     "acled_cast": true,
     "conflict_forecast": true
@@ -17,16 +17,28 @@
         "percent_increase1": 28.57142857142857
       },
       {
+        "name": "Central Darfur",
+        "avg1": 5.0,
+        "total_forecast": 7.0,
+        "percent_increase1": 40.0
+      },
+      {
+        "name": "Aj Jazirah",
+        "avg1": 7.0,
+        "total_forecast": 12.0,
+        "percent_increase1": 71.42857142857143
+      },
+      {
         "name": "Sennar",
         "avg1": 2.0,
         "total_forecast": 4.0,
         "percent_increase1": 100.0
       },
       {
-        "name": "West Darfur",
+        "name": "River Nile",
         "avg1": 2.0,
-        "total_forecast": 4.0,
-        "percent_increase1": 100.0
+        "total_forecast": 6.0,
+        "percent_increase1": 200.0
       },
       {
         "name": "Gedaref",
@@ -47,22 +59,10 @@
         "percent_increase1": 48.484848484848484
       },
       {
-        "name": "River Nile",
+        "name": "West Darfur",
         "avg1": 2.0,
-        "total_forecast": 6.0,
-        "percent_increase1": 200.0
-      },
-      {
-        "name": "Central Darfur",
-        "avg1": 5.0,
-        "total_forecast": 7.0,
-        "percent_increase1": 40.0
-      },
-      {
-        "name": "Aj Jazirah",
-        "avg1": 7.0,
-        "total_forecast": 12.0,
-        "percent_increase1": 71.42857142857143
+        "total_forecast": 4.0,
+        "percent_increase1": 100.0
       }
     ]
   }
