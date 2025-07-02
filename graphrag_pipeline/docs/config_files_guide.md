@@ -729,10 +729,48 @@ The detailed prompt given to the LLM to generate the final report. It instructs 
 
 *Recommended value*: Be as specific as possible in your instructions. The suggested prompt is designed to produce a structured, markdown-formatted security report with citations, which is ideal for the project's goals.
 
+*Suggested query* (structured report):
+
+```json
+"Generate a comprehensive security report for {country} based on the provided `Context` below. The report should cover recent events from the last year and offer a forward-looking perspective on the country's stability. Structure the report with a clear focus on key events, their impact, and the actors involved, and ensure the text is coherent, objective and maintains a formal tone suitable for a security report. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the `Context`. with footnote-style citations (e.g., [1], [2]). Whenever possible, the citations should include the author and platform (if the source is from social media) as well as the URL. The markdown report MUST have the following structure, with the heading levels and names (whenever they are not in brackets - []) denoted below: \n# [Title for the security report]\n## 1. Overview\n## 2. Key Security Events\n## 3. Forward Outlook \n### Subnational Perspective\n#### [One heading 4 per subnational conflict hotspot]\n## 4. Sources\n. In sections 1 (Overview) and 2 (Key Security Events), feel free to include whatever heading 3 titles you see fit with the provided `Context`. Furthermore, in section 2, if there is `Context` which can be linked to United Nations humanitarian operations, include a heading 3 which focuses on topic. In section 3 (Forward Outlook), ONLY include the heading 3 mentioned above (Subnational perspective), with one heading four per hotspot."
+```
+
+> The structure of the report indicated in the prompt above should be kept in order to ensure compatibility with the final accuracy evaluation of the report (which relies on RegEx for extracting information based on the heading levels to then analyze claims per section).
+
+The final structure of the markdown report is suggested to be as follows (includes the structured sections that are appended to the report without using LLMs): 
+
+```md
+# [Title of the report at LLM discretion]
+
+## 1. Overview
+
+### [Section 1 subsections at LLM discretion]
+
+## 2. Key Security Events
+
+### [Section 2 subsections at LLM discretion]
+
+### [Section 2 subsection on UN humanitarian operations suggested, but at LLM discretion]
+
+## 3. Forward Outlook
+
+### Armed Conflict Probability Forecast (Conflict Forecast)
+
+Short paragraph on [ConflictForecast's armed conflict risk predictions](https://conflictforecast.org/) for that country, together with a time series plot on the probability of armed conflict risk 3 months ahead from 2020 onwards.
+
+### Subnational Perspective
+
+#### Predicted Increase in Violent Events for next 3 Months (ACLED)
+
+Bar chart of ACLED's predictions of the regions which are expected to have a change in the number of violent events in the next 3 months.
+
+#### [One heading 4 per hotspot at LLM discretion]
+```
+
 *Example query* (open-ended):
 
 ```json
-"Generate a comprehensive security report for {country} based on the provided context. The report should cover recent events from the last year and offer a forward-looking perspective on the country's stability. Structure the report with a clear focus on key events, their impact, and the actors involved. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the context."
+"Generate a comprehensive security report for {country} based on the provided context. The report should cover recent events from the last year and offer a forward-looking perspective on the country's stability. Structure the report with a clear focus on key events, their impact, and the actors involved. Format the entire output as a markdown document. Ensure you cite the sources of information used in the report as provided in the context, with footnote-style citations (e.g., [1], [2]). Whenever possible, the citations should include the author and platform (if the source is from social media) as well as the URL."
 ```
 
 ### examples
