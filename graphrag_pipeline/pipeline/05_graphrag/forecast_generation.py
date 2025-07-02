@@ -381,7 +381,7 @@ def get_conflict_forecast_prediction(country: str) -> str:
         # Get the last available value
         last_value = pdf["ons_armedconf_03_all"].iloc[-1]
         
-        return f"According to the estimate of the Conflict Forecast project, the probability that {country} will suffer an outbreak of armed conflict within the next three months is {last_value:.2f} percent."
+        return last_value
         
     except Exception as e:
         print(f"Error getting conflict forecast prediction: {e}")
@@ -924,7 +924,7 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
             cast_data = get_acled_cast_data(country)
             
             if cast_data is not None:
-                print("✓ ACLED CAST data retrieved successfully")
+                print("ACLED CAST data retrieved successfully")
                 
                 # Process ACLED data
                 cast_with_averages = create_rolling_averages(cast_data)
@@ -935,19 +935,19 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
                 fig_cast = create_tabular_chart(all_regions, country)
                 if fig_cast is not None:
                     save_barchart(fig_cast, country, output_dir)
-                    print("✓ ACLED bar chart saved")
+                    print("ACLED bar chart saved")
                 
                 # Save ACLED data
                 save_acled_cast(hotspots, country, output_dir)
-                print("✓ ACLED data saved")
+                print("ACLED data saved")
                 
                 acled_available = True
                 
             else:
-                print("⚠ No ACLED CAST data available")
+                print("No ACLED CAST data available")
                 
         except Exception as e:
-            print(f"⚠ Error processing ACLED CAST data: {e}")
+            print(f"Error processing ACLED CAST data: {e}")
         
         # === CONFLICT FORECAST DATA PROCESSING ===
         print(f"Processing Conflict Forecast data for {country}...")
@@ -956,13 +956,13 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
             
             if fig_cf is not None:
                 save_linechart(fig_cf, country, output_dir)
-                print("✓ Conflict Forecast line chart saved")
+                print("Conflict Forecast line chart saved")
                 conflict_forecast_available = True
             else:
-                print("⚠ No Conflict Forecast data available")
+                print("No Conflict Forecast data available")
                 
         except Exception as e:
-            print(f"⚠ Error processing Conflict Forecast data: {e}")
+            print(f"Error processing Conflict Forecast data: {e}")
         
         # === GENERATE COMPREHENSIVE ANALYSIS ===
         print("Generating comprehensive analysis...")
@@ -979,8 +979,8 @@ def main(country: Optional[str] = None, custom_output_directory: Optional[str] =
         # === SUMMARY ===
         print("\n=== ANALYSIS SUMMARY ===")
         print(f"Country: {country}")
-        print(f"ACLED CAST Data: {'✓ Available' if acled_available else '✗ Not Available'}")
-        print(f"Conflict Forecast Data: {'✓ Available' if conflict_forecast_available else '✗ Not Available'}")
+        print(f"ACLED CAST Data: {'Available' if acled_available else 'Not Available'}")
+        print(f"Conflict Forecast Data: {'Available' if conflict_forecast_available else 'Not Available'}")
         if acled_available:
             print(f"Identified Hotspots: {len(hotspots_list)}")
         print(f"Output Directory: {output_dir}")
