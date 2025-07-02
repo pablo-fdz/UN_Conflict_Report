@@ -372,7 +372,7 @@ def get_conflict_forecast_prediction(country: str) -> str:
         ])
         df = df.with_columns([
             (pl.col("year") + "-" + pl.col("month")).str.to_datetime("%Y-%m").alias("date")
-        ]).filter(pl.col("year").cast(int) >= 2020)
+        ]).filter(pl.col("year").cast(int) >= 2016)
         if df.height == 0:
             return "No recent data available"
 
@@ -782,7 +782,7 @@ def plot_conflict_forecast(country: str):
         ])
         df = df.with_columns([
             (pl.col("year") + "-" + pl.col("month")).str.to_datetime("%Y-%m").alias("date")
-        ]).filter(pl.col("year").cast(int) >= 2020)
+        ]).filter(pl.col("year").cast(int) >= 2016)
         if df.height == 0:
             raise ValueError(f"No data for {country} from 2020")
 

@@ -2,15 +2,15 @@
   "acled": {
     "ingestion": true,
     "include_in_kg": true,
-    "start_date": "2025-05-01",
-    "end_date": "2025-05-31",
+    "start_date": "2025-06-01",
+    "end_date": "2025-07-31",
     "country": "Sudan"
   },
   "factal": {
     "ingestion": true,
     "include_in_kg": true,
     "start_date": "2025-06-01",
-    "end_date": "2025-06-28",
+    "end_date": "2025-07-01",
     "country": "Sudan"
   },
   "google_news": {
