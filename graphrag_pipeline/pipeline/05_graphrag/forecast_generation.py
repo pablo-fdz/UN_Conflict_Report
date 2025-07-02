@@ -614,7 +614,7 @@ def create_tabular_chart(all_regions, country):
         font=dict(size=11, family="Arial, sans-serif"),
         uniformtext_minsize=12,  # Ensures all bar labels are at least size 12
         uniformtext_mode='show', # Show even if they overflow
-        margin=dict(l=20, r=0, t=120, b=80),  # Increased right margin for multi-line labels
+        margin=dict(l=50, r=50, t=30, b=80),  # Increased right margin for multi-line labels
         height=calculated_height,
         width=2000,  # Increased width to accommodate multi-line labels
         paper_bgcolor='white',
@@ -808,10 +808,10 @@ def plot_conflict_forecast(country: str):
         ))
 
         fig.update_layout(
-            #title=f'Armed Conflict Probability Forecast - {country}',
             xaxis_title='Date', yaxis_title='Conflict Probability',
             font=dict(size=12, family='Arial, sans-serif'), showlegend=False,
-            width=900, height=500, paper_bgcolor='white', plot_bgcolor='white'
+            paper_bgcolor='white', plot_bgcolor='white',
+            margin=dict(l=50, r=20, t=30, b=80)
         )
         fig.update_xaxes(
             showgrid=True, gridcolor='lightgray', gridwidth=1,
