@@ -462,8 +462,9 @@ class GraphRAGConstructionPipeline:
             ]
             
             conflict_forecast_text.append(f"According to [ConflictForecast](https://conflictforecast.org/), the predicted probability of armed conflict in {country} in the next 3 months is of {conflict_forecast_prediction:.2%}.")
-            
+            conflict_forecast_text.append("")
             conflict_forecast_text.append(f"*This prediction represents the risk that a country suffers an outbreak of armed conflict within the next three months, i.e. that the country goes from no fatalities to over 0.5 fatalities per one million inhabitants within a time horizon of three months.*")
+            conflict_forecast_text.append("")
 
             # Add more structured text here as needed.
             conflict_forecast_text.append(f"The following chart displays the armed conflict risk trend since 2020 until the present day:")
@@ -507,16 +508,17 @@ class GraphRAGConstructionPipeline:
 
             # Get current month and year, e.g., "July, 2025"
             now = datetime.now()
-            current_month_year = now.strftime("%B, %Y")
 
             # Get next month and year, e.g., "August, 2025"
             next_month_year = (now.replace(day=1) + timedelta(days=32)).strftime("%B, %Y")  # Go to the first day of the current month, add 32 days to get into the next month, and then format it.
 
             if total_hotspots > 0:
                 acled_forecast_text.append(f"[ACLED CAST](https://acleddata.com/conflict-alert-system/) predicts {total_hotspots} ADM1 regions in {country} to be hotspots for violent events in the next calendar month ({next_month_year}).")
+                acled_forecast_text.append("")
                 acled_forecast_text.append("*An ADM1 region is considered to be a hotspot if the predicted increase in the number of violent events in the next month compared to the 3-month average is at least of 25%.*")
+                acled_forecast_text.append("")
 
-            acled_forecast_text.append("The chart below shows regions with a predicted increase in violent events.")
+            acled_forecast_text.append("The chart below shows regions with a predicted change in violent events.")
 
             # Make chart path relative for markdown file
             relative_bar_chart_path = os.path.join('assets', os.path.basename(bar_chart_path))
@@ -528,12 +530,17 @@ class GraphRAGConstructionPipeline:
 
             if total_hotspots > 0:
                 acled_forecast_text.append(f"Considering the hotspot criteria, the following regions are expected to have a significant increase in violent events in {next_month_year}:")
+                acled_forecast_text.append("")  # Add a blank line for spacing before the table
+
+                # Add Markdown table header
+                acled_forecast_text.append("| Region | Avg. # Violent Events (3 months) | Forecasted # Violent Events | % Increase |")
+                acled_forecast_text.append("|---|---|---|---|")
                 for region in hotspot_regions:
                     name = region.get('name', 'Unknown Region')
                     avg1 = region.get('avg1', 0)  # Average number of violent events in the last 3 months
                     total_forecast = region.get('total_forecast', 0)  # Forecasted number of violent events 2 months ahead, including current month
-                    percent_increase = region.get('percent_increase', 0)  # Percent increase in violent events
-                    acled_forecast_text.append(f"- **{name}**: Average of {round(avg1)} violent events in the last 3 months, forecasted {round(total_forecast)} violent events in {next_month_year} ({round(percent_increase, 1)}% increase compared to the average).")
+                    percent_increase = region.get('percent_increase1', 0)  # Percent increase in violent events
+                    acled_forecast_text.append(f"| {name} | {round(avg1)} | {round(total_forecast)} | {round(percent_increase, 1)}% |")
 
             acled_forecast_section = "\n".join(acled_forecast_text)
             
