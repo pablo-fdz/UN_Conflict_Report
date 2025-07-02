@@ -82,6 +82,7 @@ async def main(country: str = None, output_directory: str = None):
             retriever=retriever,
             retriever_search_params=retrieval_config[f'{retriever_type}Retriever'].get('search_params', None),  # Search parameters for the retriever (if not provided, default parameters will be used)
             country=country,  # Country to generate report for
+            output_directory=output_directory  # Directory where the report will be saved (for including ACLED forecasts into prompt), can be None to use default output directory
         )
         
         # Save to markdown - if no output_directory provided, will use default structure

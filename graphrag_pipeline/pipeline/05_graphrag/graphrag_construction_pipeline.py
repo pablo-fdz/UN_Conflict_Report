@@ -13,7 +13,7 @@ if graphrag_pipeline_dir not in sys.path:
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from typing import Union
+from typing import Tuple, Union
 import json
 from neo4j_graphrag.retrievers.base import Retriever
 from library.kg_indexer import KGIndexer
@@ -132,7 +132,8 @@ class GraphRAGConstructionPipeline:
             self, 
             retriever: Retriever,
             retriever_search_params: dict[str, any] = None,
-            country: str = None
+            country: str = None,
+            output_directory: str = None
         ):
         
         """
@@ -142,11 +143,16 @@ class GraphRAGConstructionPipeline:
             retriever (Retriever): The retriever used to find relevant context to pass to the LLM.
             country (str): The country for which the report is generated. Defaults to None, which uses an empty string in the query text.
             retriever_search_params (dict[str, any]): Configuration for the search parameters of the input retriever. Defaults to None, which uses the default search parameters.
+            output_directory (str): Optional directory where the forecasts included in the report will be searched for, under the `assets` subdirectory. If None, uses a default directory structure based on the country naming.
         
         Returns:
             str: The generated answer from the GraphRAG pipeline and the retrieved context (if context return is enabled).
         """
-        
+
+        # Use default output directory if none provided
+        if output_directory is None:
+            output_directory = self._get_default_output_directory(country)
+
         try:
                 
             # Get the initialized GraphRAG pipeline
@@ -155,8 +161,27 @@ class GraphRAGConstructionPipeline:
             # Format the search text for the retriever (i.e., the text that will be used to search the knowledge graph)
             formatted_search_text = self.graphrag_config.get('search_text', '').format(country=country)  # Use the country in the search text if specified, otherwise use an empty string
 
+            # Get the latest forecast data for the country to pass ACLED hotspot
+            # predictions into the report
+            forecast_data, _, _ = self._get_latest_forecast_data(output_directory)
+
+            if forecast_data:
+                if forecast_data.get('acled_cast_analysis'):  # If ACLED CAST analysis is available
+                    forecast_horizon_months = forecast_data['acled_cast_analysis'].get('forecast_horizon_months', 2)  # Get the forecast horizon months, default to 2 if not present
+                    total_hotspots = forecast_data['acled_cast_analysis'].get('total_hotspots', 0)  # Get the total hotspots, default to 0 if not present
+                    hotspot_regions = forecast_data['acled_cast_analysis'].get('hotspot_regions', [])  # Get the hotspot regions, default to empty list if not present. This will be a list of dictionaries with 'name' (name of ADM1 region), 'avg1' (average number of violent events in the last 3 months), 'total_forecast' (forecasted number of violent events 2 months ahead, including current month), 'forecast_horizon_months' (forecast horizon in months, default to 2 if not present) and 'percent_increase' keys.
+
+            # Get current month and year, e.g., "July, 2025"
+            current_month_year = datetime.now().strftime("%B, %Y")
+
             # Format the query text for generating the report with the input country
-            formatted_query_text = self.graphrag_config.get('query_text', '').format(country=country)  # Use the country in the query text if specified, otherwise use an empty string
+            formatted_query_text = self.graphrag_config.get('query_text', '').format(  # Use the information in the query text if specified, otherwise use an empty string
+                country=country,
+                current_month_year=current_month_year,  # Current month and year for the report
+                forecast_horizon_months=forecast_horizon_months if 'forecast_horizon_months' in locals() else 2,  # Use the forecast horizon months if available, otherwise default to 2
+                total_hotspots=total_hotspots if 'total_hotspots' in locals() else 0,  # Use the total hotspots if available, otherwise default to 0
+                hotspot_regions=hotspot_regions if 'hotspot_regions' in locals() else []  # Use the hotspot regions if available, otherwise default to empty list
+            )
             
             # Check rate limit before LLM call
             self.check_rate_limit()
@@ -307,6 +332,79 @@ class GraphRAGConstructionPipeline:
             # If no country specified, use a general directory
             general_path = os.path.join(reports_base, 'general')
             return general_path
+
+    def _get_latest_forecast_data(self, output_directory: str) -> Tuple[dict, str, str]:
+        """
+        Get the latest forecast data from ConflictForecast and ACLED for a given country.
+        
+        Args:
+            output_directory (str): Directory where the report will be saved (as well as the
+                forecast data in the `assets` subdirectory).
+            country (str): Country name to get the forecast for.
+            
+        Returns:
+            tuple: A tuple containing:
+                - dict: Forecast data containing conflict forecast prediction (`conflict_forecast_prediction` with float value) and ACLED CAST analysis.
+                - str: Path to the latest ConflictForecast time series plot.
+                - str: Path to the latest ACLED CAST analysis hotspots plot.
+        """
+        
+        # Initialize variables to hold forecast data and chart paths
+        forecast_data = {}
+        line_chart_path = None
+        bar_chart_path = None
+        
+        try:
+            assets_dir = os.path.join(output_directory, 'assets')
+            os.makedirs(assets_dir, exist_ok=True)  # Ensure assets directory exists
+
+            # Find the most recent forecast JSON file
+            forecast_files = [f for f in os.listdir(assets_dir) if f.startswith('forecast_') and f.endswith('.json')]
+
+            if forecast_files:
+                latest_file = max(forecast_files, key=lambda f: os.path.getmtime(os.path.join(assets_dir, f)))
+                latest_filepath = os.path.join(assets_dir, latest_file)
+
+                # Load the JSON data from the file
+                with open(latest_filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # Safely extract the required information
+                forecast_data = {
+                    "conflict_forecast_prediction": data.get("conflict_forecast_prediction", None),  # Defafults to None if not present
+                    "acled_cast_analysis": data.get("acled_cast_analysis", None)  # Defaults to None if not present (e.g., if region in Europe or North America)
+                }
+
+            else:
+                print(f"Warning: No forecast files found in {assets_dir}")
+
+            # Find the most recent line chart
+            line_chart_files = [f for f in os.listdir(assets_dir) if f.startswith(f'LineChart_') and f.endswith('.svg')]
+            if line_chart_files:
+                latest_line_chart = max(line_chart_files, key=lambda f: os.path.getmtime(os.path.join(assets_dir, f)))
+                line_chart_path = os.path.join(assets_dir, latest_line_chart)
+            else:
+                print(f"Warning: No line chart found in {assets_dir}")
+
+            # Find the most recent bar chart
+            bar_chart_files = [f for f in os.listdir(assets_dir) if f.startswith(f'BarChart_') and f.endswith('.svg')]
+            if bar_chart_files:
+                latest_bar_chart = max(bar_chart_files, key=lambda f: os.path.getmtime(os.path.join(assets_dir, f)))
+                bar_chart_path = os.path.join(assets_dir, latest_bar_chart)
+            else:
+                print(f"Warning: No bar chart found in {assets_dir}")
+
+            return forecast_data, line_chart_path, bar_chart_path
+
+        except FileNotFoundError:
+            print(f"Warning: Asset file could not be found.")
+            return {}, None, None
+        except json.JSONDecodeError:
+            print(f"Warning: Error decoding JSON from forecast file.")
+            return {}, None, None
+        except Exception as e:
+            print(f"An unexpected error occurred in _get_latest_forecast_data: {e}")
+            return {}, None, None
 
     def _format_markdown_report(
         self, 
