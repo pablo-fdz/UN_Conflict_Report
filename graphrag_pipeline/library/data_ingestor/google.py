@@ -1,25 +1,17 @@
-from typing import Tuple, List, Dict, Optional
 import polars as pl
 import random
 import time
 import httpx
 import trafilatura
-import base64
-import json
-import os
 from datetime import datetime
 from pathlib import Path 
 
 from pygooglenews import GoogleNews
-import pprint
-from itertools import islice
 from googlenewsdecoder import gnewsdecoder
 from datetime import datetime, timedelta
 import polars as pl
 from tqdm.auto import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-
 
 class GoogleNewsIngestor:
     """
