@@ -248,7 +248,23 @@ class GoogleNewsIngestor:
 
                 full_texts_dict = dict(full_text_tuples)
                 final_full_texts = [full_texts_dict.get(i, None) for i in range(len(df))]
+                
+                # ADD DATE AT THE BEGINNING OF THE FULL TEXT
                 df = df.with_columns(pl.Series(name="full_text", values=final_full_texts))
+                df = df.with_columns(
+                    pl.when(pl.col("full_text").is_not_null())
+                    .then(
+                        pl.concat_str([
+                            pl.lit("On "),
+                            pl.col("date").dt.strftime("%d %B %Y"),
+                            pl.lit(", "),
+                            pl.col("full_text")
+                        ])
+                    )
+                    .otherwise(pl.col("full_text"))
+                    .alias("full_text")
+                )
+                
                 df = df.unique(subset=["decoded_url"])
                 self.__dict__[key] = df
 
