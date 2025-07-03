@@ -1,36 +1,12 @@
 """
-ACLED Knowledge Graph Builder with Enhanced SpaCy Entity Resolution
+ACLED Knowledge Graph Builder
 
-This script builds knowledge graphs from ACLED conflict data
-using an enhanced SpaCy resolver with higher similarity threshold.
+This script builds knowledge graphs from ACLED conflict data.
 
 Features:
 - Automatic data file detection and loading
-- Enhanced SpaCy resolver with high similarity threshold (0.999)
-- Reduces inappropriate merging of geographically distinct entities
 - Configurable sampling for testing
 - Command-line interface for easy usage
-
-The enhanced resolver approach:
-- Uses SpaCy semantic matching with 95% similarity threshold
-- Better handles geographic entities with different directions
-- Maintains proper merging of true spelling variants
-- More stable than complex custom resolvers
-
-Usage Examples:
-    # Process all data from Sudan with sample for testing
-    python acled_kg_building.py --file-country "Sudan" --sample-size 10
-
-    # List available data files
-    python acled_kg_building.py --list-files
-    
-    # Process first available file with full data
-    python acled_kg_building.py
-
-RECENT CHANGES:
-- Implemented enhanced SpaCy resolver with higher similarity threshold
-- Added StrictKGPipeline class that overrides the standard resolver
-- Simplified approach for better stability and reliability
 
 Author: Generated for UN Conflict Report project
 """

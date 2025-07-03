@@ -1,9 +1,9 @@
 {
   "google_news": {
-    "ingestion": false,
+    "ingestion": true,
     "include_in_kg": true,
-    "ingestion_date_range": "1 day",
-    "kg_date_range": "1 day"
+    "ingestion_date_range": "3 days",
+    "kg_date_range": "3 days"
   },
   "factal": {
     "ingestion": true,
