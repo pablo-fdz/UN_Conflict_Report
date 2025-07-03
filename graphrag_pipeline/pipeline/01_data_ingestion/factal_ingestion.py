@@ -24,8 +24,9 @@ from dotenv import find_dotenv, load_dotenv
 from library.data_ingestor.utilities import date_range_converter
 
 def load_config():
-    script_dir = Path(__file__).parent
-    config_path = script_dir.parent.parent / 'config_files' / 'data_ingestion_config.json'
+    base_config_path = Path(__file__).parent.parent.parent / 'config_files'
+    config_path = base_config_path / 'data_ingestion_config.json'
+    load_dotenv(os.path.join(base_config_path, '.env'), override=True)
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -41,7 +42,7 @@ def get_factal_data(
     end_date=None,
     limit=None 
 ):
-    load_dotenv(find_dotenv(), override=True)
+    # load_dotenv(find_dotenv(), override=True)
     api_key = os.getenv('FACTAL_API_KEY')
     country = country.capitalize()
 
@@ -240,7 +241,8 @@ def main():
         raise ValueError("Country not specified. Set GRAPHRAG_INGEST_COUNTRY environment variable.")
     print(f"Fetching Factal data for {country}...")
     time_range = config.get('ingestion_date_range', '2 months')
-    start_date, end_date = date_range_converter(time_range)
+    start_date, end_date_str = date_range_converter(time_range)
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
     end_date = (end_date + timedelta(days=1)).strftime('%Y-%m-%d')
     raw_data = get_factal_data(country, start_date=start_date, end_date=end_date)
     processed_data = process_data(raw_data, country)

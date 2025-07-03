@@ -25,7 +25,9 @@ import requests
 from dotenv import find_dotenv, load_dotenv
 
 def load_config():
-    config_path = Path(__file__).parent.parent.parent / 'config_files' / 'data_ingestion_config.json'
+    base_config_path = Path(__file__).parent.parent.parent / 'config_files'
+    config_path = base_config_path / 'data_ingestion_config.json'
+    load_dotenv(os.path.join(base_config_path, '.env'), override=True)
     try:
         return json.loads(config_path.read_text()).get('acled', {})
     except FileNotFoundError:
@@ -42,7 +44,7 @@ def get_acled_data(
     api_key: Optional[str] = None,
 ) -> pl.DataFrame:
 
-    load_dotenv(find_dotenv(), override=True)
+    # load_dotenv(find_dotenv(), override=True)
     country = country.capitalize()
     email = email or os.getenv("ACLED_EMAIL")
     api_key = api_key or os.getenv("ACLED_API_KEY")
