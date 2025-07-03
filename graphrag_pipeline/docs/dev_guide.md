@@ -93,7 +93,30 @@ python main.py --accuracy-eval "reports/Sudan/security_report_Sudan_HybridCypher
 
 #### KG Construction Components
 
-![KG building pipeline](kg_builder_pipeline.png)
+```mermaid
+flowchart LR
+
+    A --> B[Data Loader]
+    B --> C[Text Splitter]
+    C --> D[Chunk Embedder]
+    D --> E[Entity Relation Extractor]
+    E --> F[KG Writer]
+    F --> G
+    F --> I[Entity Resolver]
+    H[Schema Builder] --> E
+    I --> G
+
+    subgraph "<b>Document<b>"
+        direction LR
+        A[Input Text]
+    end
+
+    subgraph "<b>Graph Database<b>"
+        direction LR
+        G[Neo4j]
+    end        
+        
+```
 
 A Knowledge Graph (KG) construction pipeline requires a few components, most of which are implemented in our `CustomKGPipeline`:
 
