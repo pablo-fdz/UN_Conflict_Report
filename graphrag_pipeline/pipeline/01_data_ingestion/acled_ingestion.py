@@ -138,6 +138,7 @@ def process_data(results, country):
 
     processed_data = processed_data.with_columns(
         pl.concat_str([
+            pl.col("date").dt.strftime("On %d %B %Y. "),
             pl.col("location_prefix"),
             pl.lit("Text: "),
             pl.col("text"),
