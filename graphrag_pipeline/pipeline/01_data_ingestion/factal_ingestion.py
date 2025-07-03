@@ -90,7 +90,7 @@ def get_factal_data(
         next_url = data.get('next')
         params = {}
 
-    return pl.DataFrame(results)
+    return pl.DataFrame(results, infer_schema_length=10000)  # Increase from default
 
 
 def process_data(results, country):
@@ -197,6 +197,22 @@ def process_data(results, country):
         .alias("location_prefix")
     ])
     
+    # Make sure topics list is properly handled
+    processed_data = processed_data.with_columns([
+        pl.when(pl.col("topics").is_not_null())
+        .then(pl.col("topics").list.join(", "))
+        .otherwise(pl.lit("N/A"))
+        .alias("topics_str")
+    ])
+
+    # Before the concatenation, cast all relevant columns to string
+    processed_data = processed_data.with_columns([
+        pl.col("severity").cast(pl.Utf8).fill_null("N/A"),
+        pl.col("theme").cast(pl.Utf8).fill_null("N/A"), 
+        pl.col("tag").cast(pl.Utf8).fill_null("N/A"),
+        pl.col("text").cast(pl.Utf8).fill_null(""),
+    ])
+
     # Concatenate the metadata to the text column
     processed_data = processed_data.with_columns([
         pl.concat_str([
@@ -205,13 +221,13 @@ def process_data(results, country):
             pl.lit(". Text: "),
             pl.col("text"),
             pl.lit(". Severity (from 1 to 4): "),
-            pl.col("severity").fill_null("N/A"),
+            pl.col("severity"),
             pl.lit(". Theme: "),
-            pl.col("theme").fill_null("N/A"),
+            pl.col("theme"),
             pl.lit(". Tag: "),
-            pl.col("tag").fill_null("N/A"),
+            pl.col("tag"),
             pl.lit(". Topics: "),
-            pl.col("topics").list.join(", ").fill_null("N/A."),
+            pl.col("topics_str").fill_null("N/A"),
         ]).alias("text")
     ])
     
