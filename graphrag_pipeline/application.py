@@ -131,13 +131,13 @@ class Application:
                                 self.logger.error(f"Data ingestion module for {data_source} not found.")
                                 continue  # Skip to the next data source if the module is not found
                         
-                        # Execute the script directly as if it was run with python -m in the terminal
-                        try:
-                            self.logger.info(f"Executing script: {script_path}")
-                            runpy.run_module(script_path, run_name="__main__")
-                            self.logger.info(f"Successfully executed script for {data_source} for {country}")
-                        except Exception as e:
-                            self.logger.error(f"Error executing script for {data_source}: {str(e)}")
+                            # Execute the script directly as if it was run with python -m in the terminal
+                            try:
+                                self.logger.info(f"Executing script: {script_path}")
+                                runpy.run_module(script_path, run_name="__main__")
+                                self.logger.info(f"Successfully executed script for {data_source} for {country}")
+                            except Exception as e:
+                                self.logger.error(f"Error executing script for {data_source}: {str(e)}")
             
                 # Clean up environment variable
                 if 'GRAPHRAG_INGEST_COUNTRY' in os.environ:

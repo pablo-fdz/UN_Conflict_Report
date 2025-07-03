@@ -4,6 +4,7 @@ This script retrieves data via the Factal API, processes it, and stores it in "g
 """
 
 import sys
+from pathlib import Path
 
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
 # modules in parent directory)
@@ -16,7 +17,6 @@ import json
 import os
 import re
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import polars as pl
 import requests

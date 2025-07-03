@@ -4,6 +4,7 @@ This script retrieves data via the ACLED API, processes it, and stores it in "gr
 """
 
 import sys
+from pathlib import Path
 
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
 # modules in parent directory)
@@ -16,7 +17,6 @@ import io
 import json
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 from library.data_ingestor.utilities import date_range_converter
 

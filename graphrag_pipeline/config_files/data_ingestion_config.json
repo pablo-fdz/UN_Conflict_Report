@@ -1,7 +1,7 @@
 {
   "google_news": {
-    "ingestion": false,
-    "include_in_kg": false,
+    "ingestion": true,
+    "include_in_kg": true,
     "ingestion_date_range": "1 day",
     "kg_date_range": "1 day"
   },
