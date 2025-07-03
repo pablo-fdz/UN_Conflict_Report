@@ -37,7 +37,7 @@ def get_factal_data(
 ):
     load_dotenv(find_dotenv(), override=True)
     api_key = os.getenv('FACTAL_API_KEY')
-    country = country.capitalize()
+    country = country.title()
 
     def get_id(name, kind="location", category="Country"):
         r = requests.get(
