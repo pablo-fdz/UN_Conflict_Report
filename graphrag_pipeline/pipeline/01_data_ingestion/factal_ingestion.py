@@ -44,7 +44,7 @@ def get_factal_data(
 ):
     # load_dotenv(find_dotenv(), override=True)
     api_key = os.getenv('FACTAL_API_KEY')
-    country = country.capitalize()
+    country = country.title()
 
     def get_id(name, kind="location", category="Country"):
         r = requests.get(
@@ -200,6 +200,7 @@ def process_data(results, country):
     # Concatenate the metadata to the text column
     processed_data = processed_data.with_columns([
         pl.concat_str([
+            pl.col("date").dt.strftime("On %d %B %Y. "),
             pl.col("location_prefix"),
             pl.lit(". Text: "),
             pl.col("text"),
