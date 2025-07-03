@@ -2,22 +2,22 @@
   "google_news": {
     "ingestion": true,
     "include_in_kg": false,
-    "ingestion_date_range": "3 days",
-    "kg_inclusion_date_range": "3 days",
+    "ingestion_date_range": "1 month",
+    "kg_inclusion_date_range": "1 month",
     "sample_size": "5"
   },
   "factal": {
     "ingestion": true,
     "include_in_kg": true,
-    "ingestion_date_range": "3 days",
-    "kg_inclusion_date_range": "3 days",
+    "ingestion_date_range": "2 months",
+    "kg_inclusion_date_range": "2 months",
     "sample_size": "5"
   },
   "acled": {
     "ingestion": true,
     "include_in_kg": true,
-    "ingestion_date_range": "3 days",
-    "kg_inclusion_date_range": "3 days",
-    "sample_size": "5"
+    "ingestion_date_range": "2 months",
+    "kg_inclusion_date_range": "2 months",
+    "sample_size": "all"
   }
 }
