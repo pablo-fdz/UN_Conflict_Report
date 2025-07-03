@@ -14,7 +14,7 @@
             "temperature": 0.0,
             "response_mime_type": "application/json"
         },
-        "max_requests_per_minute": 10
+        "max_requests_per_minute": 15
     },
     "schema_config": {
         "create_schema": true,
