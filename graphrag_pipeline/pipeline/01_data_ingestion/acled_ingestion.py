@@ -3,29 +3,37 @@ ACLED data ingestion script.
 This script retrieves data via the ACLED API, processes it, and stores it in "graphrag_pipeline/data" as "acled_{name of the country}_{date}.parquet".
 """
 
+import sys
+from pathlib import Path
+
+# Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
+# modules in parent directory)
+script_dir = Path(__file__).parent  # Get the directory where this script is located
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
+if graphrag_pipeline_dir not in sys.path:
+    sys.path.append(graphrag_pipeline_dir)
+
 import io
 import json
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
+from library.data_ingestor.utilities import date_range_converter
 
 import polars as pl
 import requests
 from dotenv import find_dotenv, load_dotenv
 
 def load_config():
-    config_path = Path(__file__).parent.parent.parent / 'config_files' / 'data_ingestion_config.json'
+    base_config_path = Path(__file__).parent.parent.parent / 'config_files'
+    config_path = base_config_path / 'data_ingestion_config.json'
+    load_dotenv(os.path.join(base_config_path, '.env'), override=True)
     try:
         return json.loads(config_path.read_text()).get('acled', {})
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
     except json.JSONDecodeError:
         raise ValueError(f"Error parsing configuration file at {config_path}")
-
-config = load_config()
-country = config.get('country')    
-print(f"Fetching ACLED data for {country}...")
 
 def get_acled_data(
     country: str,
@@ -36,7 +44,7 @@ def get_acled_data(
     api_key: Optional[str] = None,
 ) -> pl.DataFrame:
 
-    load_dotenv(find_dotenv(), override=True)
+    # load_dotenv(find_dotenv(), override=True)
     country = country.capitalize()
     email = email or os.getenv("ACLED_EMAIL")
     api_key = api_key or os.getenv("ACLED_API_KEY")
@@ -169,11 +177,14 @@ def save_data(processed_data, country, start_date, end_date):
 
 def main():
     config = load_config()
+    country = os.getenv('GRAPHRAG_INGEST_COUNTRY')
+    if not country:
+        raise ValueError("Country not specified. Set GRAPHRAG_INGEST_COUNTRY environment variable.")
+    print(f"Fetching ACLED data for {country}...")
     if not config:
         raise ValueError("Failed to load configuration. Aborting ingestion.")
-    start_date = config.get('start_date')
-    end_date = config.get('end_date')
-    country = config.get('country')
+    time_range = config.get('ingestion_date_range', '2 months')
+    start_date, end_date = date_range_converter(time_range)
     raw_data = get_acled_data(country, start_date=start_date, end_date=end_date)
     processed_data = process_data(raw_data, country)
     save_data(processed_data, country, start_date, end_date)

@@ -1,11 +1,17 @@
 import json
 import sys
-from datetime import datetime
+import os
 from pathlib import Path 
 
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent / "library"))
+# Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
+# modules in parent directory)
+script_dir = Path(__file__).parent  # Get the directory where this script is located
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
+if graphrag_pipeline_dir not in sys.path:
+    sys.path.append(graphrag_pipeline_dir)
 
-from data_ingestor.google import GoogleNewsIngestor
+from library.data_ingestor.google_news_ingestor import GoogleNewsIngestor
+from library.data_ingestor.utilities import date_range_converter
 
 def load_config():
     script_dir = Path(__file__).parent
@@ -26,12 +32,14 @@ def load_config():
 def main():
 
     config = load_config()
-    country = config.get('country')  
-
+    country = os.getenv('GRAPHRAG_INGEST_COUNTRY')
+    if not country:
+        raise ValueError("Country not specified. Set GRAPHRAG_INGEST_COUNTRY environment variable.")
+    
     print(f"Fetching Google News data for {country}...")
 
-    start_date = config.get('start_date')
-    end_date = config.get('end_date')
+    time_range = config.get('ingestion_date_range', '2 months')
+    start_date, end_date = date_range_converter(time_range)
 
     query_language = config.get('query', {}).get('language', 'en')
     query_country = config.get('query', {}).get('country', 'US')

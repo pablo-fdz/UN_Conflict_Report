@@ -3,19 +3,30 @@ Factal data ingestion script.
 This script retrieves data via the Factal API, processes it, and stores it in "graphrag_pipeline/data" as "Factal_{name of the country}_{date}.parquet".
 """
 
+import sys
+from pathlib import Path
+
+# Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
+# modules in parent directory)
+script_dir = Path(__file__).parent  # Get the directory where this script is located
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
+if graphrag_pipeline_dir not in sys.path:
+    sys.path.append(graphrag_pipeline_dir)
+
 import json
 import os
 import re
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import polars as pl
 import requests
 from dotenv import find_dotenv, load_dotenv
+from library.data_ingestor.utilities import date_range_converter
 
 def load_config():
-    script_dir = Path(__file__).parent
-    config_path = script_dir.parent.parent / 'config_files' / 'data_ingestion_config.json'
+    base_config_path = Path(__file__).parent.parent.parent / 'config_files'
+    config_path = base_config_path / 'data_ingestion_config.json'
+    load_dotenv(os.path.join(base_config_path, '.env'), override=True)
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -25,17 +36,13 @@ def load_config():
     except json.JSONDecodeError:
         raise ValueError(f"Error parsing configuration file at {config_path}")
 
-config = load_config()
-country = config.get('country')    
-print(f"Fetching Factal data for {country}...")
-
 def get_factal_data(
     country,
     start_date=None,
     end_date=None,
     limit=None 
 ):
-    load_dotenv(find_dotenv(), override=True)
+    # load_dotenv(find_dotenv(), override=True)
     api_key = os.getenv('FACTAL_API_KEY')
     country = country.capitalize()
 
@@ -229,11 +236,14 @@ def save_data(processed_data, country, start_date, end_date):
 
 def main():
     config = load_config()
-    if not config:
-        raise ValueError("Failed to load configuration. Aborting ingestion.")
-    start_date = config.get('start_date')
-    end_date = (datetime.strptime(config.get('end_date'), '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-    country = config.get('country')
+    country = os.getenv('GRAPHRAG_INGEST_COUNTRY')
+    if not country:
+        raise ValueError("Country not specified. Set GRAPHRAG_INGEST_COUNTRY environment variable.")
+    print(f"Fetching Factal data for {country}...")
+    time_range = config.get('ingestion_date_range', '2 months')
+    start_date, end_date_str = date_range_converter(time_range)
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+    end_date = (end_date + timedelta(days=1)).strftime('%Y-%m-%d')
     raw_data = get_factal_data(country, start_date=start_date, end_date=end_date)
     processed_data = process_data(raw_data, country)
     save_data(processed_data, country, start_date, end_date)
