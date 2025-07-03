@@ -29,52 +29,20 @@ if str(script_dir) not in sys.path:
 # Note: These imports must come after path setup to ensure modules are found
 try:
     from kg_construction_pipeline import KGConstructionPipeline
-    from neo4j_graphrag.experimental.components.resolver import SpaCySemanticMatchResolver
-    from library.kg_builder.utilities import ensure_spacy_model
 except ImportError as e:
     print(f"Import error: {e}")
     print("Make sure you're running this script from the correct directory")
     sys.exit(1)
 
-class StrictKGPipeline(KGConstructionPipeline):
-    """
-    Custom KG Construction Pipeline for Google News data that uses SpaCy resolver
-    with higher similarity threshold to reduce inappropriate geographic merging.
-    """
-    
-    def _create_resolver(self, driver):
-        """Override to use SpaCy resolver with higher similarity threshold."""
-        
-        entity_resolution_config = self.build_config['entity_resolution_config']
-        
-        if not entity_resolution_config.get('use_resolver', False):
-            return None
-        
-        # Use SpaCy resolver with higher threshold to reduce inappropriate merges
-        config = entity_resolution_config.get('SpaCySemanticMatchResolver_config', {})
-        ensure_spacy_model(config.get('spacy_model', 'en_core_web_lg'))
-        
-        # Create SpaCy resolver with higher threshold to reduce over-merging
-        return SpaCySemanticMatchResolver(
-            driver,
-            filter_query=config.get('filter_query'),
-            resolve_properties=config.get('resolve_properties', ["name"]),
-            similarity_threshold=0.999,  # Higher threshold to reduce inappropriate merges
-            spacy_model=config.get('spacy_model', "en_core_web_lg"),
-            neo4j_database='neo4j'
-        )
-
-async def main(data_file_pattern=None, sample_size=10, region=None):
+async def main():
     """
     Main function to build knowledge graph from Google News conflict data.
     
     1. Data Loading: Loads Google News conflict data
     2. Knowledge Graph Construction: Creates entities, relationships, text chunks and document nodes with metadata
-    3. Entity Resolution: Uses enhanced SpaCy semantic matching resolver with higher similarity threshold
     
     The resulting knowledge graph contains entities with proper relationships, ready for 
-    downstream analysis and querying. The enhanced SpaCy resolver with 95% similarity threshold
-    reduces inappropriate merging while maintaining proper entity resolution.
+    downstream analysis and querying.
     
     Args:
         data_file_pattern (str, optional): Pattern to match Google News data files. If None, uses first available file.
@@ -100,7 +68,7 @@ async def main(data_file_pattern=None, sample_size=10, region=None):
 
     # Initialize the custom Google News KG construction pipeline 
     # This uses enhanced SpaCy resolver with higher similarity threshold
-    kg_pipeline = StrictKGPipeline()
+    kg_pipeline = KGConstructionPipeline()
 
     # Define metadata mapping for Google News data (document properties additional 
     # to base field to dataframe columns)
