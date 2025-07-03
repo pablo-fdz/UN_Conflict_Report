@@ -36,8 +36,8 @@ def main():
 
     print(f"Fetching Google News data for {country}...")
 
-    start_date = config.get('start_date')
-    end_date = config.get('end_date')
+    time_range = config.get('ingestion_date_range', '2 months')
+    start_date, end_date = date_range_converter(time_range)
 
     query_language = config.get('query', {}).get('language', 'en')
     query_country = config.get('query', {}).get('country', 'US')

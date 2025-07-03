@@ -181,8 +181,8 @@ def main():
     config = load_config()
     if not config:
         raise ValueError("Failed to load configuration. Aborting ingestion.")
-    start_date = config.get('start_date')
-    end_date = config.get('end_date')
+    time_range = config.get('ingestion_date_range', '2 months')
+    start_date, end_date = date_range_converter(time_range)
     country = config.get('country')
     raw_data = get_acled_data(country, start_date=start_date, end_date=end_date)
     processed_data = process_data(raw_data, country)

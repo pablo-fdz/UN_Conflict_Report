@@ -241,8 +241,9 @@ def main():
     config = load_config()
     if not config:
         raise ValueError("Failed to load configuration. Aborting ingestion.")
-    start_date = config.get('start_date')
-    end_date = (datetime.strptime(config.get('end_date'), '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+    time_range = config.get('ingestion_date_range', '2 months')
+    start_date, end_date = date_range_converter(time_range)
+    end_date = (end_date + timedelta(days=1)).strftime('%Y-%m-%d')
     country = config.get('country')
     raw_data = get_factal_data(country, start_date=start_date, end_date=end_date)
     processed_data = process_data(raw_data, country)
