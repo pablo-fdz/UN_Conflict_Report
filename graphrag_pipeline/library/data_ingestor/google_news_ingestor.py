@@ -263,6 +263,7 @@ class GoogleNewsIngestor:
                     )
                     .otherwise(pl.col("full_text"))
                     .alias("full_text")
+                    .cast(pl.Utf8)  
                 )
                 
                 df = df.unique(subset=["decoded_url"])
