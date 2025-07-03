@@ -16,6 +16,7 @@ import sys
 import asyncio
 import polars as pl
 from pathlib import Path
+import json
 
 # Setup paths for imports
 script_dir = Path(__file__).parent
@@ -40,19 +41,37 @@ async def main():
     
     1. Data Loading: Loads Google News conflict data
     2. Knowledge Graph Construction: Creates entities, relationships, text chunks and document nodes with metadata
-    
-    The resulting knowledge graph contains entities with proper relationships, ready for 
-    downstream analysis and querying.
-    
-    Args:
-        data_file_pattern (str, optional): Pattern to match Google News data files. If None, uses first available file.
-        sample_size (int, optional): Number of rows to process for testing. If None, processes all data.
     """
+
+    base_config_path = Path(__file__).parent.parent.parent / 'config_files'
+    config_path = base_config_path / 'data_ingestion_config.json'
+
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            return config.get('google_news', {})
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Configuration file not found at {config_path}")
+    except json.JSONDecodeError:
+        raise ValueError(f"Error parsing configuration file at {config_path}")
+
+    # Get the sample size parameter if defined
+    sample_size_str = config.get('sample_size', 'all')
+    sample_size = None
+    if sample_size_str.lower() != 'all':
+        try:
+            sample_size = int(sample_size_str)
+        except (ValueError, TypeError):
+            print(f"Invalid sample size '{sample_size_str}'. Processing all data.")
+            sample_size = None
+
+    # Get the country for which to build the knowledge graph
+    country = os.getenv('KG_BUILDING_COUNTRY')
+    if not country:
+        raise ValueError("Country not specified. Set GRAPHRAG_KG_COUNTRY environment variable.")
 
     # ==================== 1. Load data ====================
 
-    # TODO: Method to load Google News data here
-    # Also figure out google news parquet naming
     google_news_data_dir = graphrag_pipeline_dir / 'data' / 'google_news'
     df = None  # Placeholder for actual DataFrame loading logic
     if df['date'].dtype == pl.Date:
@@ -77,9 +96,6 @@ async def main():
         'url': 'decoded_url',
         'domain': 'source'
     }
-
-    # Run the KG pipeline with the loaded data
-    print("Using SpaCySemanticMatchResolver with similarity threshold: 0.999")
     
     results = await kg_pipeline.run_async(
         df=df,
@@ -94,30 +110,5 @@ async def main():
 
 # Asyncio event loop to run the main function in a script
 if __name__ == "__main__":
-    import argparse
-    
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Build Knowledge Graph from Google News conflict data with built-in entity resolution')
-    parser.add_argument('--file-country', type=str, help='Pattern to match Google News data files (e.g., "Sudan", "Mali", "2024")')
-    parser.add_argument('--sample-size', type=int, help='Number of rows to process for testing (default: process all)')
-    parser.add_argument('--list-files', action='store_true', help='List available Google News data files and exit')
-    
-    args = parser.parse_args()
-    
-    # List files if requested
-    if args.list_files:
-        data_dir = os.path.join(Path(__file__).parent.parent.parent, 'data', 'google')
-        if os.path.exists(data_dir):
-            files = [f for f in os.listdir(data_dir) if f.endswith('.parquet')]
-            print("Available Google News data files:")
-            for f in files:
-                print(f"  - {f}")
-        else:
-            print(f"Data directory not found: {data_dir}")
-        sys.exit(0)
-
     # Run the main function with arguments
-    results = asyncio.run(main(
-        data_file_pattern=args.file_country,
-        sample_size=args.sample_size
-    ))
+    results = asyncio.run(main())
