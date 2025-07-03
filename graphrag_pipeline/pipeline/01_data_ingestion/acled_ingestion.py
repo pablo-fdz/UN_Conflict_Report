@@ -33,10 +33,6 @@ def load_config():
     except json.JSONDecodeError:
         raise ValueError(f"Error parsing configuration file at {config_path}")
 
-config = load_config()
-country = config.get('country')    
-print(f"Fetching ACLED data for {country}...")
-
 def get_acled_data(
     country: str,
     start_date: Optional[str] = None,
@@ -179,11 +175,14 @@ def save_data(processed_data, country, start_date, end_date):
 
 def main():
     config = load_config()
+    country = os.getenv('GRAPHRAG_INGEST_COUNTRY')
+    if not country:
+        raise ValueError("Country not specified. Set GRAPHRAG_INGEST_COUNTRY environment variable.")
+    print(f"Fetching ACLED data for {country}...")
     if not config:
         raise ValueError("Failed to load configuration. Aborting ingestion.")
     time_range = config.get('ingestion_date_range', '2 months')
     start_date, end_date = date_range_converter(time_range)
-    country = config.get('country')
     raw_data = get_acled_data(country, start_date=start_date, end_date=end_date)
     processed_data = process_data(raw_data, country)
     save_data(processed_data, country, start_date, end_date)

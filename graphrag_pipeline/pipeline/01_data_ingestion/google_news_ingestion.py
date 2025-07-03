@@ -1,6 +1,6 @@
 import json
 import sys
-from datetime import datetime
+import os
 from pathlib import Path 
 
 # Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
@@ -32,8 +32,10 @@ def load_config():
 def main():
 
     config = load_config()
-    country = config.get('country')  
-
+    country = os.getenv('GRAPHRAG_INGEST_COUNTRY')
+    if not country:
+        raise ValueError("Country not specified. Set GRAPHRAG_INGEST_COUNTRY environment variable.")
+    
     print(f"Fetching Google News data for {country}...")
 
     time_range = config.get('ingestion_date_range', '2 months')

@@ -16,7 +16,7 @@ class Application:
 
     def __init__(
             self, 
-            ingest_data: bool = False,
+            ingest_data: list[str] = [],
             build_kg: bool = False,
             resolve_ex_post: bool = False,
             graph_retrieval: list[str] = [],
@@ -27,9 +27,9 @@ class Application:
         Initializes the application with the provided parameters.
         
         Args:
-            ingest_data (bool): Flag to indicate whether to ingest the 
-                data sources set in the configuration files. Defaults to False (no 
-                ingestion).
+            ingest_data (list[str]): List of countries for which to ingest 
+                data from the sources set in the configuration files. Defaults to 
+                an empty list (no ingestion).
             build_kg (str): Flag to indicate whether to build the knowledge
                 graph out of the data sources set in the configuration files. 
                 Defaults to False (knowledge graph is not built).
@@ -107,37 +107,44 @@ class Application:
     def _run_data_ingestion(self):
         """Run the data ingestion step for specified sources in the configuration file."""
 
-        if self.ingest_data == True:
+        if self.ingest_data:  # Check if the list is not empty
 
             self.logger.info("Starting data ingestion process")
 
             try:
-                for data_source, config in self.data_config.items():  # Iterate over all data sources in the config file
-                    if config['ingestion'] is True:  # If the ingestion is enabled for the data source, ingest data
-                        
-                        self.logger.info(f"Ingesting data from source: {data_source}")
-                        
-                        # Set the path to the appropriate script
-                        script_path = f"pipeline.01_data_ingestion.{data_source}_ingestion"
-                        
-                        # Ensure the script path is valid
-                        if not importlib.util.find_spec(script_path):
-                            self.logger.error(f"Data ingestion module for {data_source} not found.")
-                            continue  # Skip to the next data source if the module is not found
+                
+                for country in self.ingest_data:
+                    self.logger.info(f"Ingesting data for country: {country}")
+                    os.environ['GRAPHRAG_INGEST_COUNTRY'] = country
                     
-                    # Execute the script directly as if it was run with python -m in the terminal
-                    try:
-                        self.logger.info(f"Executing script: {script_path}")
-                        runpy.run_module(script_path, run_name="__main__")
-                        self.logger.info(f"Successfully executed script for {data_source}")
-                    except Exception as e:
-                        self.logger.error(f"Error executing script for {data_source}: {str(e)}")
-
-                    else:
-                        continue  # Skip to the next data source if ingestion is not enabled
+                    for data_source, config in self.data_config.items():  # Iterate over all data sources in the config file
+                        
+                        if config['ingestion'] is True:  # If the ingestion is enabled for the data source, ingest data
+                            
+                            self.logger.info(f"Ingesting data from source: {data_source} for {country}")
+                            
+                            # Set the path to the appropriate script
+                            script_path = f"pipeline.01_data_ingestion.{data_source}_ingestion"
+                            
+                            # Ensure the script path is valid
+                            if not importlib.util.find_spec(script_path):
+                                self.logger.error(f"Data ingestion module for {data_source} not found.")
+                                continue  # Skip to the next data source if the module is not found
+                        
+                        # Execute the script directly as if it was run with python -m in the terminal
+                        try:
+                            self.logger.info(f"Executing script: {script_path}")
+                            runpy.run_module(script_path, run_name="__main__")
+                            self.logger.info(f"Successfully executed script for {data_source} for {country}")
+                        except Exception as e:
+                            self.logger.error(f"Error executing script for {data_source}: {str(e)}")
             
+                # Clean up environment variable
+                if 'GRAPHRAG_INGEST_COUNTRY' in os.environ:
+                    del os.environ['GRAPHRAG_INGEST_COUNTRY']
+
             except ImportError as e:
-                self.logger.error(f"Could not import data ingestion module: {str(e)}")
+                self.logger.error(f"Could not run data ingestion module: {str(e)}")
         
         else:
             pass  # If no ingestion is specified, skip this step

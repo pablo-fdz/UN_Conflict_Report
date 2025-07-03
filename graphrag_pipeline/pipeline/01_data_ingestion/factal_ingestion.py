@@ -35,10 +35,6 @@ def load_config():
     except json.JSONDecodeError:
         raise ValueError(f"Error parsing configuration file at {config_path}")
 
-config = load_config()
-country = config.get('country')    
-print(f"Fetching Factal data for {country}...")
-
 def get_factal_data(
     country,
     start_date=None,
@@ -239,12 +235,13 @@ def save_data(processed_data, country, start_date, end_date):
 
 def main():
     config = load_config()
-    if not config:
-        raise ValueError("Failed to load configuration. Aborting ingestion.")
+    country = os.getenv('GRAPHRAG_INGEST_COUNTRY')
+    if not country:
+        raise ValueError("Country not specified. Set GRAPHRAG_INGEST_COUNTRY environment variable.")
+    print(f"Fetching Factal data for {country}...")
     time_range = config.get('ingestion_date_range', '2 months')
     start_date, end_date = date_range_converter(time_range)
     end_date = (end_date + timedelta(days=1)).strftime('%Y-%m-%d')
-    country = config.get('country')
     raw_data = get_factal_data(country, start_date=start_date, end_date=end_date)
     processed_data = process_data(raw_data, country)
     save_data(processed_data, country, start_date, end_date)

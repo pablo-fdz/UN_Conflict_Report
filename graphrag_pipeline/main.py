@@ -13,8 +13,9 @@ def parse_arguments():
     # Add arguments for each pipeline step
     parser.add_argument(
         '--ingest',
-        help='Download data from configured sources (if argument is provided).',
-        action='store_true',  # If the flag is present, ingest data. By default, it is False.
+        help='Space-separated strings of countries for which to download data from configured sources. This argument can accept multiple values. Data ingestion is not executed if no countries are provided or if the argument is not used. Example usage: --ingest "Sudan" "Mali"',
+        nargs='*',  # Zero or more arguments can be provided
+        default=[],  # Default is an empty list if no arguments are provided
         dest='ingest_data'
     )
     
