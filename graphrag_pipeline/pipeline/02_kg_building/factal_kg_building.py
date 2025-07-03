@@ -15,6 +15,7 @@ import os
 import sys
 import asyncio
 import polars as pl
+import json
 from pathlib import Path
 
 # Setup paths for imports
@@ -34,21 +35,40 @@ except ImportError as e:
     print("Make sure you're running this script from the correct directory")
     sys.exit(1)
 
-
-async def main(data_file_pattern=None, sample_size=10):
+async def main():
     """
     Main function to build knowledge graph from Factal conflict data.
     
     1. Data Loading: Loads Factal conflict data
     2. Knowledge Graph Construction: Creates entities, relationships, text chunks and document nodes with metadata
-    
-    The resulting knowledge graph contains entities with proper relationships, ready for 
-    downstream analysis and querying.
-    
-    Args:
-        data_file_pattern (str, optional): Pattern to match Factal data files. If None, uses first available file.
-        sample_size (int, optional): Number of rows to process for testing. If None, processes all data.
     """
+
+    base_config_path = Path(__file__).parent.parent.parent / 'config_files'
+    config_path = base_config_path / 'data_ingestion_config.json'
+
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            return config.get('factal', {})
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Configuration file not found at {config_path}")
+    except json.JSONDecodeError:
+        raise ValueError(f"Error parsing configuration file at {config_path}")
+
+    # Get the sample size parameter if defined
+    sample_size_str = config.get('sample_size', 'all')
+    sample_size = None
+    if sample_size_str.lower() != 'all':
+        try:
+            sample_size = int(sample_size_str)
+        except (ValueError, TypeError):
+            print(f"Invalid sample size '{sample_size_str}'. Processing all data.")
+            sample_size = None
+
+    # Get the country for which to build the knowledge graph
+    country = os.getenv('KG_BUILDING_COUNTRY')
+    if not country:
+        raise ValueError("Country not specified. Set GRAPHRAG_KG_COUNTRY environment variable.")
 
     # ==================== 1. Load data ====================
 
@@ -65,6 +85,9 @@ async def main(data_file_pattern=None, sample_size=10):
         if not available_files:
             raise FileNotFoundError(f"No Factal parquet files found in: {data_dir}")
         
+        # Join the "country" with underscores if there is spacing
+        data_file_pattern = country.replace(' ', '_')
+
         # Select file based on pattern (name of a country) or use first available
         if data_file_pattern:
             matching_files = [f for f in available_files if data_file_pattern.lower() in f.lower()]
@@ -110,9 +133,6 @@ async def main(data_file_pattern=None, sample_size=10):
         "domain": "domain",
         "url": "url" # if available
     }
-
-    # Run the KG pipeline with the loaded data
-    print("Using SpaCySemanticMatchResolver with similarity threshold: 0.99")
     
     results = await kg_pipeline.run_async(
         df=df,
@@ -127,30 +147,5 @@ async def main(data_file_pattern=None, sample_size=10):
 
 # Asyncio event loop to run the main function in a script
 if __name__ == "__main__":
-    import argparse
-    
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Build Knowledge Graph from Factal conflict data with built-in entity resolution')
-    parser.add_argument('--file-country', type=str, help='Pattern to match Factal data files (e.g., "Sudan", "Mali", "2024")')
-    parser.add_argument('--sample-size', type=int, help='Number of rows to process for testing (default: process all)')
-    parser.add_argument('--list-files', action='store_true', help='List available Factal data files and exit')
-    
-    args = parser.parse_args()
-    
-    # List files if requested
-    if args.list_files:
-        data_dir = os.path.join(Path(__file__).parent.parent.parent, 'data', 'factal')
-        if os.path.exists(data_dir):
-            files = [f for f in os.listdir(data_dir) if f.endswith('.parquet')]
-            print("Available Factal data files:")
-            for f in files:
-                print(f"  - {f}")
-        else:
-            print(f"Data directory not found: {data_dir}")
-        sys.exit(0)
-    
     # Run the main function with arguments
-    results = asyncio.run(main(
-        data_file_pattern=args.file_country,
-        sample_size=args.sample_size
-    ))
+    results = asyncio.run(main())

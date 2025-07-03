@@ -152,73 +152,85 @@ class Application:
     def _run_kg_building(self):
         """Run the knowledge graph building step for specified sources."""
 
-        if self.build_kg == True:
+        if self.build_kg:
 
             self.logger.info("Starting knowledge graph building process")
 
             # ---------- 1. Build from data sources specified in the configuration file ----------
 
-            for data_source, config in self.data_config.items():  # Iterate over all data sources in the config file
-                if config['include_in_kg'] is True:  # If the KG building is enabled for the data source, build from its data
-                    
-                    self.logger.info(f"Building KG from data source: {data_source}")
-                    
-                    # Set the path to the appropriate script
-                    script_path = f"pipeline.02_kg_building.{data_source}_kg_building"
-                    
-                    # Ensure the script path is valid
-                    if not importlib.util.find_spec(script_path):
-                        self.logger.error(f"KG building module for {data_source} not found.")
-                        continue  # Skip to the next data source if the module is not found
-                    
-                    # Execute the script directly as if it was run with python -m in the terminal
-                    try:
-                        self.logger.info(f"Executing script: {script_path}")
-                        runpy.run_module(script_path, run_name="__main__")
-                        self.logger.info(f"Successfully executed script for {data_source}")
-                    except Exception as e:
-                        self.logger.error(f"Error executing script for {data_source}: {str(e)}")
-                else:
-                    self.logger.debug(f"Skipping {data_source} - not enabled for KG building")
-                    continue  # Skip to the next data source if KG building is not enabled
-            
-            # ---------- 2. Build from sample data ----------
-            
-            # Build KG with sample data if specified in the configuration, for 
-            # development purposes. This is useful for testing and development without
-            # needing to run the full data ingestion and KG building process.
-            if self.build_config['dev_settings']['build_with_sample_data'] == True:
-
-                self.logger.info("Building KG with sample data for development purposes")
-
-                try:
-                    # Set the path to the appropriate script
-                    script_path = f"pipeline.02_kg_building.sample_kg_building"
-                    
-                    # Ensure the script path is valid
-                    if not importlib.util.find_spec(script_path):
-                        self.logger.error(f"KG building module for sample data not found.")
-                    
-                    # Execute the script directly as if it was run with python -m in the terminal
-                    try:
-                        self.logger.info(f"Executing script: {script_path}")
-                        runpy.run_module(script_path, run_name="__main__")
-                        self.logger.info(f"Successfully executed script for sample data.")
-                    except Exception as e:
-                        self.logger.error(f"Error executing script for sample data: {str(e)}")
+            for country in self.build_kg:
                 
-                except ImportError as e:
-                    self.logger.error(f"Could not import data ingestion module: {str(e)}")
+                self.logger.info(f"Building KG for country: {country}")
+                
+                os.environ['KG_BUILDING_COUNTRY'] = country
+
+                for data_source, config in self.data_config.items():  # Iterate over all data sources in the config file
+                    if config['include_in_kg'] is True:  # If the KG building is enabled for the data source, build from its data
+                        
+                        self.logger.info(f"Building KG from data source: {data_source}")
+                        
+                        # Set the path to the appropriate script
+                        script_path = f"pipeline.02_kg_building.{data_source}_kg_building"
+                        
+                        # Ensure the script path is valid
+                        if not importlib.util.find_spec(script_path):
+                            self.logger.error(f"KG building module for {data_source} not found.")
+                            continue  # Skip to the next data source if the module is not found
+                        
+                        # Execute the script directly as if it was run with python -m in the terminal
+                        try:
+                            self.logger.info(f"Executing script: {script_path}")
+                            runpy.run_module(script_path, run_name="__main__")
+                            self.logger.info(f"Successfully executed script for {data_source}")
+                        except Exception as e:
+                            self.logger.error(f"Error executing script for {data_source}: {str(e)}")
+                    
+                    else:
+                        self.logger.debug(f"Skipping {data_source} - not enabled for KG building")
+                        continue  # Skip to the next data source if KG building is not enabled
             
-            else:
-                pass  # If sample data building is disabled, skip this step
-
-            # ---------- 3. Index the knowledge graph ----------
-
-            self._run_kg_indexing()  # Index the knowledge graph after building it
+            # Clean up environment variables
+            if 'KG_BUILDING_COUNTRY' in os.environ:
+                del os.environ['KG_BUILDING_COUNTRY']
+                
+            # ---------- Index the knowledge graph ----------
         
+            self._run_kg_indexing()  # Index the knowledge graph after building it
+
+        # ---------- 2. Build from sample data ----------
+        
+        # Build KG with sample data if specified in the configuration, for 
+        # development purposes. This is useful for testing and development without
+        # needing to run the full data ingestion and KG building process.
+        elif self.build_config['dev_settings']['build_with_sample_data'] == True:
+
+            self.logger.info("Building KG with sample data for development purposes")
+
+            try:
+                # Set the path to the appropriate script
+                script_path = f"pipeline.02_kg_building.sample_kg_building"
+                
+                # Ensure the script path is valid
+                if not importlib.util.find_spec(script_path):
+                    self.logger.error(f"KG building module for sample data not found.")
+                
+                # Execute the script directly as if it was run with python -m in the terminal
+                try:
+                    self.logger.info(f"Executing script: {script_path}")
+                    runpy.run_module(script_path, run_name="__main__")
+                    self.logger.info(f"Successfully executed script for sample data.")
+                except Exception as e:
+                    self.logger.error(f"Error executing script for sample data: {str(e)}")
+            
+            except ImportError as e:
+                self.logger.error(f"Could not import data ingestion module: {str(e)}")
+        
+            # ---------- Index the knowledge graph ----------
+            
+            self._run_kg_indexing()  # Index the knowledge graph after building it
+
         else:
-            pass  # If no ingestion is specified, skip this step
+            pass  # If KG building is disabled, skip this step
     
     def _run_kg_indexing(self):
         """Run knowledge graph indexing."""

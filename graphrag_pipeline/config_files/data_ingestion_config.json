@@ -3,18 +3,21 @@
     "ingestion": true,
     "include_in_kg": true,
     "ingestion_date_range": "3 days",
-    "kg_date_range": "3 days"
+    "kg_date_range": "3 days",
+    "sample_size": "all"
   },
   "factal": {
     "ingestion": true,
     "include_in_kg": true,
     "ingestion_date_range": "3 days",
-    "kg_date_range": "3 days"
+    "kg_date_range": "3 days",
+    "sample_size": "all"
   },
   "acled": {
     "ingestion": true,
     "include_in_kg": true,
     "ingestion_date_range": "3 days",
-    "kg_date_range": "3 days"
+    "kg_date_range": "3 days",
+    "sample_size": "all"
   }
 }
