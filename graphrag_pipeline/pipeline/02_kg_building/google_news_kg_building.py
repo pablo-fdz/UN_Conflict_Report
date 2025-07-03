@@ -49,7 +49,7 @@ async def main():
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
-            return config.get('google_news', {})
+            config = config.get('google_news', {})
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
     except json.JSONDecodeError:
@@ -73,40 +73,95 @@ async def main():
     # ==================== 1. Load data ====================
 
     google_news_data_dir = graphrag_pipeline_dir / 'data' / 'google_news'
-    df = None  # Placeholder for actual DataFrame loading logic
-    if df['date'].dtype == pl.Date:
-        df = df.with_columns(pl.col('date').cast(pl.String))
+    all_results = []
 
     try:
-        pass  # Placeholder for Google News data loading logic
+        # Find Google News data files
+        if not google_news_data_dir.exists():
+            raise FileNotFoundError(f"Google News data directory not found: {google_news_data_dir}")
+
+        # Get list of available files
+        available_files = [f for f in os.listdir(google_news_data_dir) if f.endswith('.parquet')]
+        
+        if not available_files:
+            raise FileNotFoundError(f"No Google News parquet files found in: {google_news_data_dir}")
+
+        # Join the "country" with underscores if there is spacing
+        data_file_pattern = country.replace(' ', '_')
+
+        # Select file based on pattern (name of a country)
+        matching_files = [f for f in available_files if data_file_pattern.lower() in f.lower()]
+        
+        if not matching_files:
+            print(f"No files matching country '{data_file_pattern}' found.")
+            print(f"Available files: {available_files}")
+            raise FileNotFoundError(f"No files matching country: {data_file_pattern}")
+
+        # Sort files by the end date in the filename, descending (most recent first)
+        try:
+            sorted_files = sorted(
+                matching_files,
+                key=lambda f: f.removesuffix('.parquet').split('_')[-1],
+                reverse=True
+            )
+        except IndexError:
+            print("Warning: Could not sort files by date due to unexpected filename format. Processing in default order.")
+            sorted_files = matching_files
+
+        # ==================== 2. Run KG pipeline ====================
+
+        # Initialize the custom Google News KG construction pipeline 
+        kg_pipeline = KGConstructionPipeline()
+
+        # Define metadata mapping for Google News data (document properties additional 
+        # to base field to dataframe columns)
+        metadata_mapping = {
+            'date': 'date',
+            'url': 'decoded_url',
+            'domain': 'source'
+        }
+        
+        # Loop through all matching files
+        for file_name in sorted_files:
+            try:
+                df_path = google_news_data_dir / file_name
+                print(f"Loading and processing data from: {file_name}")
+                
+                df = pl.read_parquet(df_path)
+
+                # Apply sampling if specified
+                if sample_size:
+                    original_size = len(df)
+                    df = df.head(sample_size)
+                    print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
+
+                # Convert date column to string format for metadata
+                if 'date' in df.columns and df['date'].dtype == pl.Date:
+                    df = df.with_columns(pl.col('date').cast(pl.String))
+
+                # ==================== 2. Run KG pipeline for the current file ====================
+                
+                results = await kg_pipeline.run_async(
+                    df=df,
+                    document_base_field='id',
+                    text_column='full_text',
+                    document_metadata_mapping=metadata_mapping,
+                    document_id_column='id'
+                )
+
+                print(f"Processed {len(results)} documents from {file_name} successfully.")
+                all_results.extend(results)
+
+            except Exception as e:
+                print(f"Error processing file {file_name}: {e}")
+                continue # Continue to the next file
+
     except Exception as e:
-        print(f"Error loading Google News data: {e}")
+        print(f"Error during data loading phase: {e}")
         return []
 
-    # ==================== 2. Run KG pipeline ====================
-
-    # Initialize the custom Google News KG construction pipeline 
-    # This uses enhanced SpaCy resolver with higher similarity threshold
-    kg_pipeline = KGConstructionPipeline()
-
-    # Define metadata mapping for Google News data (document properties additional 
-    # to base field to dataframe columns)
-    metadata_mapping = {
-        'date': 'date',
-        'url': 'decoded_url',
-        'domain': 'source'
-    }
-    
-    results = await kg_pipeline.run_async(
-        df=df,
-        document_base_field='id',
-        text_column='full_text',
-        document_metadata_mapping=metadata_mapping,
-        document_id_column='item_id'  # Use item_id as document ID
-    )
-
-    print(f"Processed {len(results)} documents successfully.")
-    return results
+    print(f"Total processed documents across all files: {len(all_results)}")
+    return all_results
 
 # Asyncio event loop to run the main function in a script
 if __name__ == "__main__":

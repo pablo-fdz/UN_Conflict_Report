@@ -21,7 +21,7 @@ def parse_arguments():
     
     parser.add_argument(
         '--build-kg',
-        help='Space-separated strings of countries for which to build the knowledge graph from ingested data. This argument can accept multiple values. KG building is not executed if no countries are provided, if the argument is not used or if data has not been ingested for those countries. Example usage: --build-kg "Sudan" "Mali"',
+        help='Space-separated strings of countries for which to build the knowledge graph from ingested data. This argument can accept multiple values. KG building is not executed if no countries are provided, if the argument is not used, if data has not been ingested for those countries or if the "sample data" option in the configuration files is deactivated. Example usage: --build-kg "Sudan" "Mali"',
         nargs='*',  # Zero or more arguments can be provided
         default=[],  # Default is an empty list if no arguments are provided
         dest='build_kg'

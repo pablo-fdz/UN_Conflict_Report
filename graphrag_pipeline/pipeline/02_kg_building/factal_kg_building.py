@@ -49,7 +49,7 @@ async def main():
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
-            return config.get('factal', {})
+            config = config.get('factal', {})
     except FileNotFoundError:
         raise FileNotFoundError(f"Configuration file not found at {config_path}")
     except json.JSONDecodeError:
@@ -71,10 +71,12 @@ async def main():
         raise ValueError("Country not specified. Set GRAPHRAG_KG_COUNTRY environment variable.")
 
     # ==================== 1. Load data ====================
+    
+    # Find Factal data files
+    data_dir = graphrag_pipeline_dir / 'data' / 'factal'
+    all_results = []
 
     try:
-        # Find Factal data files
-        data_dir = os.path.join(graphrag_pipeline_dir, 'data', 'factal')
         
         if not os.path.exists(data_dir):
             raise FileNotFoundError(f"Factal data directory not found: {data_dir}")
@@ -89,61 +91,78 @@ async def main():
         data_file_pattern = country.replace(' ', '_')
 
         # Select file based on pattern (name of a country) or use first available
-        if data_file_pattern:
-            matching_files = [f for f in available_files if data_file_pattern.lower() in f.lower()]
-            if not matching_files:
-                print(f"No files matching country '{data_file_pattern}' found.")
-                print(f"Available files: {available_files}")
-                raise FileNotFoundError(f"No files matching country: {data_file_pattern}")
-            selected_file = matching_files[0]
-        else:
-            selected_file = available_files[0]
+        matching_files = [f for f in available_files if data_file_pattern.lower() in f.lower()]
         
-        df_path = os.path.join(data_dir, selected_file)
-        print(f"Loading data from: {selected_file}")
+        if not matching_files:
+            print(f"No files matching country '{data_file_pattern}' found.")
+            print(f"Available files: {available_files}")
+            raise FileNotFoundError(f"No files matching country: {data_file_pattern}")
         
-        df = pl.read_parquet(df_path)
+        # Sort files by the end date in the filename, descending (most recent first)
+        try:
+            sorted_files = sorted(
+                matching_files,
+                key=lambda f: f.removesuffix('.parquet').split('_')[-1],
+                reverse=True
+            )
+        except IndexError:
+            print("Warning: Could not sort files by date due to unexpected filename format. Processing in default order.")
+            sorted_files = matching_files
+
+        # ==================== 2. Run KG pipeline ====================
+
+        # Initialize the custom Factal KG construction pipeline 
+        kg_pipeline = KGConstructionPipeline()
+
+        # Define metadata mapping for Factal data (document properties additional 
+        # to base field to dataframe columns)
+        metadata_mapping = {
+            "date": "date",           # Event date
+            "domain": "domain",
+            "url": "url" # if available
+        }
         
-        # Apply sampling if specified
-        if sample_size:
-            original_size = len(df)
-            df = df.head(sample_size)
-            print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
-        
-        # Convert date column to string format for metadata
-        if 'date' in df.columns:
-            df = df.with_columns([
-                pl.col('date').dt.strftime('%Y-%m-%d').alias('date')
-            ])
+        # Loop through all matching files
+        for file_name in sorted_files:
+            try:
+                df_path = data_dir / file_name
+                print(f"Loading and processing data from: {file_name}")
+                
+                df = pl.read_parquet(df_path)
+                
+                # Apply sampling if specified
+                if sample_size:
+                    original_size = len(df)
+                    df = df.head(sample_size)
+                    print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
+                
+                # Convert date column to string format for metadata
+                if 'date' in df.columns:
+                    df = df.with_columns(pl.col('date').dt.strftime('%Y-%m-%d'))
+
+                # ==================== 2. Run KG pipeline for the current file ====================
+                
+                results = await kg_pipeline.run_async(
+                    df=df,
+                    document_base_field='item_id',
+                    text_column='text',
+                    document_metadata_mapping=metadata_mapping,
+                    document_id_column='item_id'
+                )
+
+                print(f"Processed {len(results)} documents from {file_name} successfully.")
+                all_results.extend(results)
+
+            except Exception as e:
+                print(f"Error processing file {file_name}: {e}")
+                continue # Continue to the next file
     
     except Exception as e:
-        print(f"Error loading Factal data: {e}")
+        print(f"Error during data loading phase: {e}")
         return []
 
-    # ==================== 2. Run KG pipeline ====================
-
-    # Initialize the custom Factal KG construction pipeline 
-    # This uses enhanced SpaCy resolver with higher similarity threshold
-    kg_pipeline = KGConstructionPipeline()
-
-    # Define metadata mapping for Factal data (document properties additional 
-    # to base field to dataframe columns)
-    metadata_mapping = {
-        "date": "date",           # Event date
-        "domain": "domain",
-        "url": "url" # if available
-    }
-    
-    results = await kg_pipeline.run_async(
-        df=df,
-        document_base_field='item_id',
-        text_column='text',
-        document_metadata_mapping=metadata_mapping,
-        document_id_column='item_id'  # Use item_id as document ID
-    )
-
-    print(f"Processed {len(results)} documents successfully.")
-    return results
+    print(f"Total processed documents across all files: {len(all_results)}")
+    return all_results
 
 # Asyncio event loop to run the main function in a script
 if __name__ == "__main__":

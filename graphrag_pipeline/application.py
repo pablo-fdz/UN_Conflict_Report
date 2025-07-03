@@ -160,6 +160,8 @@ class Application:
 
             for country in self.build_kg:
                 
+                print("Building knowledge graph for country:", country)
+
                 self.logger.info(f"Building KG for country: {country}")
                 
                 os.environ['KG_BUILDING_COUNTRY'] = country
