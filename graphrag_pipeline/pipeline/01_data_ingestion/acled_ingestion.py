@@ -3,12 +3,22 @@ ACLED data ingestion script.
 This script retrieves data via the ACLED API, processes it, and stores it in "graphrag_pipeline/data" as "acled_{name of the country}_{date}.parquet".
 """
 
+import sys
+
+# Add the parent directory (graphrag_pipeline) to the Python path (needed for importing
+# modules in parent directory)
+script_dir = Path(__file__).parent  # Get the directory where this script is located
+graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
+if graphrag_pipeline_dir not in sys.path:
+    sys.path.append(graphrag_pipeline_dir)
+
 import io
 import json
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from library.data_ingestor.utilities import date_range_converter
 
 import polars as pl
 import requests
