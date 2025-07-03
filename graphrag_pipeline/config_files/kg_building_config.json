@@ -374,7 +374,7 @@
         "ex_post_resolver": "SpaCySemanticMatchResolver"
     },
     "dev_settings": {
-        "build_with_sample_data": true,
+        "build_with_sample_data": false,
         "on_error": "RAISE",
         "batch_size": 1000,
         "max_concurrency": 5
