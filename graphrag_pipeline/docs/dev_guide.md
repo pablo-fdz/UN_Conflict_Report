@@ -114,8 +114,7 @@ flowchart LR
     subgraph "<b>Graph Database<b>"
         direction LR
         G[Neo4j]
-    end        
-        
+    end           
 ```
 
 A Knowledge Graph (KG) construction pipeline requires a few components, most of which are implemented in our `CustomKGPipeline`:
