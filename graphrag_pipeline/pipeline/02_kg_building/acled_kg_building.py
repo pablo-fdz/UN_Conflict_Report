@@ -146,7 +146,7 @@ async def main():
                     document_base_field='item_id',
                     text_column='text',
                     document_metadata_mapping=metadata_mapping,
-                    document_id_column='item_id'
+                    document_id_column=None
                 )
 
                 print(f"Processed {len(results)} documents from {file_name} successfully.")
