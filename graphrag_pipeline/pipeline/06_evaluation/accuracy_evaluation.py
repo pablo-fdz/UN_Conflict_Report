@@ -25,7 +25,7 @@ from neo4j_graphrag.embeddings import SentenceTransformerEmbeddings
 from library.kg_builder.utilities import GeminiLLM, get_rate_limit_checker
 from neo4j_graphrag.generation import RagTemplate
 from library.evaluator import ReportProcessor, AccuracyEvaluator
-from library.evaluator.schemas import Claims, Questions, EvaluationResults, GraphRAGResults, RewriteSectionResults
+from library.evaluator.schemas import Claims, Questions, EvaluationResults, GraphRAGResultsBase, RewriteSectionResults
 from library.graphrag import CustomGraphRAG
 from library.graphrag.utilities import escape_lucene_query
 from neo4j_graphrag.retrievers import (
@@ -199,7 +199,7 @@ def initialize_components(configs, gemini_api_key):
     # Initialize LLM with GraphRAG configurations
     llm_graphrag_config = evaluation_config['graphrag']['llm_config']
     llm_graphrag_params = llm_graphrag_config.get('model_params', {}).copy()
-    llm_graphrag_params['response_schema'] = GraphRAGResults  # Set the response schema for the LLM GraphRAG model (list of dictionaries, with each dictionary containing a question and its answer)
+    llm_graphrag_params['response_schema'] = GraphRAGResultsBase  # Set the response schema for the LLM GraphRAG model (dictionary containing a question, its answer and the source)
     llm_graphrag = GeminiLLM(
         model_name=llm_graphrag_config['model_name'],
         google_api_key=gemini_api_key,
@@ -501,55 +501,58 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                     # This will run the LLM for as many times as claims in the report
                     # (e.g., 40 times if there are 40 claims in the report)
                     for claim, questions in claims_and_questions.items():
-                        check_rate_limit()  # Check and enforce rate limit before the GraphRAG call
-                        safe_claim = escape_lucene_query(claim)  # Sanitize the claim text for use in the query (e.g., escape special characters for Lucene queries)
-                        formatted_query_text = configs['evaluation_config']['graphrag']['query_text'].format(
-                            claim=claim, 
-                            questions=questions
-                        )
                         
-                        try:
-                            # As with neo4j's GraphRAG class, if return_context is
-                            # set to True, the `graphrag_results` will be a
-                            # dictionary with 2 keys: `answer` and `retriever_result`,
-                            # with the context extracted by the retriever
-                            graphrag_results = graphrag.search(
-                                search_text=safe_claim,  # Search query for the retriever (i.e., the claim)
-                                query_text=formatted_query_text,  # User question that is used to search the knowledge graph (i.e., vector search and fulltext search is made based on this question); defaults to empty string if not provided
-                                message_history=None,  # Optional message history for conversational context (omitted for now)
-                                examples=configs['evaluation_config']['graphrag'].get('examples', ''),  # Optional examples to guide the LLM's response (defaults to empty string)
-                                retriever_config=configs['evaluation_config']['retrievers'][retriever_name].get('search_params', None),  # Configuration for the search parameters of the input retriever
-                                return_context=True,  # Whether to return the context used for generating the answer (defaults to True). Can be obtained with graphrag_results['retriever_result']
-                                structured_output=True  # Whether to return the output in a structured format
+                        generated_answers_for_claim = {}  # To store answers for all questions of this claim
+                        
+                        for question in questions:
+
+                            check_rate_limit()  # Check and enforce rate limit before the GraphRAG call
+                                                        
+                            # Combine the claim and the current question for the search query
+                            search_text_combined = f"{claim} {question}"
+                            safe_search_text = escape_lucene_query(search_text_combined)  # Sanitize the combined search text for use in the query (escape special characters for Lucene queries)
+
+                            formatted_query_text = configs['evaluation_config']['graphrag']['query_text'].format(
+                                claim=claim, 
+                                questions=question
                             )
+                        
+                            try:
+                                # As with neo4j's GraphRAG class, if return_context is
+                                # set to True, the `graphrag_results` will be a
+                                # dictionary with 2 keys: `answer` and `retriever_result`,
+                                # with the context extracted by the retriever
+                                graphrag_results = graphrag.search(
+                                    search_text=safe_search_text,  # Search query for the retriever (claim + question)
+                                    query_text=formatted_query_text,  # User question that is used to search the knowledge graph (i.e., vector search and fulltext search is made based on this question); defaults to empty string if not provided
+                                    message_history=None,  # Optional message history for conversational context (omitted for now)
+                                    examples=configs['evaluation_config']['graphrag'].get('examples', ''),  # Optional examples to guide the LLM's response (defaults to empty string)
+                                    retriever_config=configs['evaluation_config']['retrievers'][retriever_name].get('search_params', None),  # Configuration for the search parameters of the input retriever
+                                    return_context=True,  # Whether to return the context used for generating the answer (defaults to True). Can be obtained with graphrag_results['retriever_result']
+                                    structured_output=True  # Whether to return the output in a structured format
+                                )
 
-                            llm_usage += 1  # Increment LLM usage by 1 for GraphRAG search
+                                llm_usage += 1  # Increment LLM usage by 1 for GraphRAG search
                             
-                            # Get the generated answer from the GraphRAG results
-                            generated_answers_obj = graphrag_results.answer  # The generated answer is structured as a list of dictionaries, each containing a question (inside the "question" key) and its answer (inside the "answer" key).
-                            
-                            # The generated_answers_obj.results is a list of Pydantic objects.
-                            # We now convert this list to a dictionary where the keys are the questions and the values are the answers.
-                            # Example: from a list of objects like [GraphRAGResultsBase(question='Q1', answer='A1', source='S1'), ...]
-                            # to a dictionary like {'Q1': ['A1', 'S1'], ...}
-                            generated_answers = {}
-                            if hasattr(generated_answers_obj, 'results'):  # Access the results attribute of the GraphRAGResults object
-                                generated_answers = {
-                                    item.question: [item.answer, item.source]  # Store the answer and source in a list 
-                                    for item in generated_answers_obj.results 
-                                    if hasattr(item, 'question') and hasattr(item, 'answer') and hasattr(item, 'source')
-                                }
+                                # Get the generated answer from the GraphRAG results
+                                generated_answer_obj = graphrag_results.answer  # The generated answer is a single Pydantic object with 'question', 'answer', and 'source' attributes.
 
-                            # Create the claim data structure
+                                # Since we get a single object, we can directly access its attributes
+                                # and add the answer to our dictionary for the claim.
+                                if hasattr(generated_answer_obj, 'question') and hasattr(generated_answer_obj, 'answer') and hasattr(generated_answer_obj, 'source'):
+                                    generated_answers_for_claim[generated_answer_obj.question] = [generated_answer_obj.answer, generated_answer_obj.source]
+
+                            except Exception as e:
+                                print(f"Error during GraphRAG search for claim '{claim[:30]}...' and question '{question[:30]}...': {e}")
+                        
+                        # Create the claim data structure after processing all its questions
+                        # For each claim, we will have a structure like: {'claim': {'Q1': ['A1', 'S1'], ...}}
+                        if generated_answers_for_claim:
                             claim_data = {
                                 "claim": claim,
-                                "questions": generated_answers
+                                "questions": generated_answers_for_claim
                             }
-
                             section_claims_list.append(claim_data)
-
-                        except Exception as e:
-                            print(f"Error during GraphRAG search for claim '{claim[:30]}...': {e}")
 
                     # Create the section data structure
                     if section_claims_list:

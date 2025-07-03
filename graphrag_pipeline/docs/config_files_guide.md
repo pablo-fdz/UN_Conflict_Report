@@ -899,7 +899,7 @@ The prompt template for answering the verification questions.
 
 #### *query_text*
 
-The prompt that instructs the RAG pipeline on how to use the context to answer the verification questions for a given claim. Needs `{claim}` and `{questions}` placeholders in order to work properly. 
+The prompt that instructs the RAG pipeline on how to use the context to answer the verification questions for a given claim. Needs `{claim}` and `{question}` placeholders in order to work properly. 
 
 It is separated from the `search_text`, which in this case will only be the claim that is being evaluated at each time (an individual claim, so embedders with a short context window - like 256 tokens - should suffice to cover the search text at this step).
 
@@ -908,7 +908,7 @@ It is separated from the `search_text`, which in this case will only be the clai
 *Suggested prompt*:
 
 ```json
-"Using the provided `Context` below, answer the following questions about the `Claim`. Answer concisely and truthfully, without making assumptions or adding information beyond what is provided in the `Context`. If there is not enough information in the `Context` to answer a question, state that by answering with \"Not enough information to answer this question.\".\n\nHere is the claim and the questions:\nClaim: {claim}\nQuestions: {questions}"
+"Using the provided `Context` below, answer the following question about the `Claim`. Answer concisely and truthfully, without making assumptions or adding information beyond what is provided in the `Context`. Always provide the source of the answer, cited in the following way: \"<author (newspaper or physical person)>: <url>\". If there is not enough information in the `Context` to answer a question, state that by answering with \"Not enough information to answer this question.\". Leave the source empty in that case.\n\nHere is the claim and the question:\nClaim: {claim}\nQuestion: {question}",
 ```
 
 > Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  

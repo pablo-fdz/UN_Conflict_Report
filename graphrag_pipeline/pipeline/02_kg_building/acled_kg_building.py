@@ -62,7 +62,7 @@ async def main():
         try:
             sample_size = int(sample_size_str)
         except (ValueError, TypeError):
-            print(f"Invalid sample size '{sample_size_str}'. Processing all data.")
+            print(f"Invalid sample size '{sample_size_str}'. The `sample_size` parameter should be a string containing an integer or `all` to process all data. Processing all data.")
             sample_size = None
 
     # Get the country for which to build the knowledge graph
