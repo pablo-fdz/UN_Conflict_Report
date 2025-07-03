@@ -291,7 +291,7 @@ class GoogleNewsIngestor:
             date_tuple = (first_date, last_date)
             suffix = date_tuple_counts.get(date_tuple, 0)
 
-            file_path = output_dir / f"google_news_{self.search_term}_{first_date}_{last_date}_{suffix}.parquet"
+            file_path = output_dir / f"google_news_{self.search_term}_{first_date}_{last_date}.parquet"
             df.write_parquet(file_path)
-
+            
             date_tuple_counts[date_tuple] = suffix + 1

@@ -1,23 +1,23 @@
 {
-  "acled": {
+  "google_news": {
     "ingestion": true,
-    "include_in_kg": true,
-    "start_date": "2025-06-01",
-    "end_date": "2025-07-31",
-    "country": "Sudan"
+    "include_in_kg": false,
+    "ingestion_date_range": "3 days",
+    "kg_inclusion_date_range": "3 days",
+    "sample_size": "5"
   },
   "factal": {
     "ingestion": true,
     "include_in_kg": true,
-    "start_date": "2025-06-01",
-    "end_date": "2025-07-01",
-    "country": "Sudan"
+    "ingestion_date_range": "3 days",
+    "kg_inclusion_date_range": "3 days",
+    "sample_size": "5"
   },
-  "google_news": {
-    "ingestion": false,
-    "include_in_kg": false,
-    "start_date": "2025-05-01",
-    "end_date": "2025-06-01",
-    "country": "Sudan"
+  "acled": {
+    "ingestion": true,
+    "include_in_kg": true,
+    "ingestion_date_range": "3 days",
+    "kg_inclusion_date_range": "3 days",
+    "sample_size": "5"
   }
 }
