@@ -2,19 +2,19 @@
   "google_news": {
     "ingestion": true,
     "include_in_kg": true,
-    "ingestion_date_range": "1 month",
-    "kg_inclusion_date_range": "1 month",
+    "ingestion_date_range": "1 week",
+    "kg_inclusion_date_range": "1 week",
     "sample_size": "all"
   },
   "factal": {
-    "ingestion": true,
+    "ingestion": false,
     "include_in_kg": true,
     "ingestion_date_range": "3 months",
     "kg_inclusion_date_range": "3 months",
     "sample_size": "all"
   },
   "acled": {
-    "ingestion": true,
+    "ingestion": false,
     "include_in_kg": true,
     "ingestion_date_range": "3 months",
     "kg_inclusion_date_range": "3 months",
