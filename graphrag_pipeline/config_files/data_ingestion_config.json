@@ -4,20 +4,20 @@
     "include_in_kg": true,
     "ingestion_date_range": "1 week",
     "kg_inclusion_date_range": "1 week",
-    "sample_size": "all"
+    "sample_size": "40"
   },
   "factal": {
-    "ingestion": false,
+    "ingestion": true,
     "include_in_kg": true,
     "ingestion_date_range": "3 months",
     "kg_inclusion_date_range": "3 months",
-    "sample_size": "all"
+    "sample_size": "140"
   },
   "acled": {
-    "ingestion": false,
+    "ingestion": true,
     "include_in_kg": true,
     "ingestion_date_range": "3 months",
     "kg_inclusion_date_range": "3 months",
-    "sample_size": "all"
+    "sample_size": "140"
   }
 }
