@@ -605,7 +605,7 @@ RETURN
   + apoc.text.join([c IN chunks | c.text], '\n---\n')
   + '\n\n=== text chunk document metadata ===\n'
   + apoc.text.join([d IN docs |
-       d.domain + ' | ' + d.date + ' | ' + d.url
+       d.domain + ': ' + d.url + ', ' d.date 
     ], '\n---\n')
   + '\n\n=== kg_rels ===\n'
   + apoc.text.join([r IN kg_rels |
