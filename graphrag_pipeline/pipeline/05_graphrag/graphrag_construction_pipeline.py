@@ -587,7 +587,7 @@ class GraphRAGConstructionPipeline:
             metadata_lines.append("")
 
         if retriever_type:
-            metadata_lines.append(f"**Retriever:** {retriever_type}")
+            metadata_lines.append(f"**Retriever used for report generation:** {retriever_type}")
             metadata_lines.append("")
             
         if forecast_data_path:
