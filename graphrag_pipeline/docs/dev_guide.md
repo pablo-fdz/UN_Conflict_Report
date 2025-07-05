@@ -146,6 +146,50 @@ The default `SimpleKGPipeline` from `neo4j-graphrag` was not sufficient for two 
 
 ### 4. GraphRAG Query & Report Generation
 
+```mermaid
+---
+config:
+  flowchart:
+    subGraphTitleMargin:
+      top: 10
+      bottom: 10
+  look: neo
+  layout: dagre
+---
+flowchart LR
+ subgraph s1["<b>Neo4j<b></b></b>"]
+        A["Knowledge Graph"]
+  end
+ subgraph s2["Google Gemini"]
+        n7["LLM"]
+  end
+ subgraph s3["Context"]
+    direction LR
+        n12["Vector embedding"]
+        n13["Text"]
+        n14["Graph properties"]
+  end
+    n2["Search prompt"] -.-> n1["Retriever"]
+    n2 --> n4["Embedding"]
+    n1 --> n12
+    n1 -.-> n13
+    n4 --> n1
+    n6["Report generation prompt"] --> n5["Prompt Formatting"]
+    n5 --> n7
+    n7 --> n8["Report"]
+    n10["Examples"] -.-> n5
+    n11["ACLED CAST"] --> n5
+    n12 --> n14
+    n13 --> n14
+    s3 --> n5
+    s1 <--> n1
+    n13@{ shape: rect}
+    n2@{ shape: rect}
+    n6@{ shape: rect}
+    n10@{ shape: rect}
+    n11@{ shape: rect}
+```
+
 -   **Process**: This is the final step where the system answers a user's query. It uses a retriever to fetch relevant context from the KG, which is then passed to an LLM to generate a coherent, evidence-based answer.
 -   **Core Logic**: `GraphRAGConstructionPipeline`.
 -   **Configuration**: `config_files/kg_retrieval_config.json` and `config_files/graphrag_config.json`.
