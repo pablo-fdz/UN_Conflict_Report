@@ -605,7 +605,7 @@ RETURN
   + apoc.text.join([c IN chunks | c.text], '\n---\n')
   + '\n\n=== text chunk document metadata ===\n'
   + apoc.text.join([d IN docs |
-       d.domain + ': ' + d.url + ', ' d.date 
+       d.domain + ' (domain): ' + d.url + ' (URL), ' d.date + '(date)' 
     ], '\n---\n')
   + '\n\n=== kg_rels ===\n'
   + apoc.text.join([r IN kg_rels |
@@ -618,8 +618,13 @@ RETURN
 ```
 
 *Default query* (with proper JSON formatting):
-```cypher
+```json
 "//1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n//2) collect relationships and text chunks\nWITH collect(DISTINCT chunk) AS chunks,\n collect(DISTINCT rel) AS rels\n\n//3) format and return context\nRETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') + '\\n\\n=== kg_rels ===\\n' +\n apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info"
+```
+
+*Suggested query* (with proper JSON formatting):
+```json
+"// 1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n// 2) Collect chunks and KG relationships\nWITH collect(DISTINCT chunk) AS chunks,\n     collect(DISTINCT rel) AS kg_rels\n\n// 3) Also pull in each chunk’s Document (optional match to avoid dropping the chunk if it has no FROM_DOCUMENT edge)\nUNWIND chunks AS c\nOPTIONAL MATCH (c)-[:FROM_DOCUMENT]->(doc:Document)\nWITH chunks, kg_rels,\n     collect(DISTINCT {domain:doc.domain, url:doc.url, date:doc.date}) AS docs\n\n// 4) Return formatted output\nRETURN\n  '=== text chunks ===\\n'\n  + apoc.text.join([c IN chunks | c.text], '\\n---\\n')\n  + '\\n\\n=== text chunk document metadata ===\\n'\n  + apoc.text.join([d IN docs |\n       d.domain + ' (domain): ' + d.url + ' (URL), ' + d.date + '(date)'\n    ], '\\n---\\n')\n  + '\\n\\n=== kg_rels ===\\n'\n  + apoc.text.join([r IN kg_rels |\n       startNode(r).name\n       + ' - ' + type(r)\n       + '(' + coalesce(r.details,'') + ')'\n       + ' -> ' + endNode(r).name\n    ], '\\n---\\n')\n  AS info"
 ```
 
 *Recommended query*: set a query that is able to extract all of the necessary context surrounding an event (actors, countries, etc.) as well as the extraction of the sources for proper referencing. Consider the graph schema when setting this query.
