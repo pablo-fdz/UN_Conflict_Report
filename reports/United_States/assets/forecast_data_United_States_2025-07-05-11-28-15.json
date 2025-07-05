@@ -1,11 +1,11 @@
 {
   "country": "United States",
-  "analysis_date": "2025-07-02-11-24-23",
+  "analysis_date": "2025-07-05-11-28-07",
   "data_sources": {
     "acled_cast": true,
     "conflict_forecast": true
   },
-  "conflict_forecast_prediction": 0.0128837213079217,
+  "conflict_forecast_prediction": 0.0129625984123156,
   "acled_cast_analysis": {
     "forecast_horizon_months": 2,
     "total_hotspots": 1,

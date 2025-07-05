@@ -58,7 +58,7 @@ class EvaluationConclusions(enum.Enum):
     """Enumeration for evaluation conclusions."""
     TRUE = "true"
     FALSE = "false"
-    MIXTURE = "mixture"
+    MIXED = "mixed"
 
 class EvaluationResults(BaseModel):
     """
@@ -69,7 +69,7 @@ class EvaluationResults(BaseModel):
         description="The conclusion of the evaluation, indicating whether the claims are true, false, or a mixture of both. This field is REQUIRED."
         )
     justification: str = Field(
-        description="A detailed explanation of the evaluation conclusion, including the reasoning behind it. This field is REQUIRED if the conclusion is 'false' or 'mixture'. If the conclusion is 'true', this field can be an empty string."
+        description="A detailed explanation of the evaluation conclusion, including the reasoning behind it. This field is REQUIRED if the conclusion is 'false' or 'mixed'. If the conclusion is 'true', this field can be an empty string."
         )
 
 class Citations(BaseModel):

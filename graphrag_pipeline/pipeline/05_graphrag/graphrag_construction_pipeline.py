@@ -561,40 +561,44 @@ class GraphRAGConstructionPipeline:
 
         # ===== 2. Format the markdown report =====
 
-        # Build header
-        title = f"Security Report"
-        if country:
-            title += f" - {country}: Metadata"
-            
-        markdown_lines = [
-            f"# {title}",
-            "",
-            f"**Generated on:** {timestamp}",
-            ""
-        ]
+        markdown_lines = []  # Initialize an empty list to hold the markdown lines
         
-        if retriever_type:
-            markdown_lines.append(f"**Retriever:** {retriever_type}")
-            markdown_lines.append("")
-            
-        if forecast_data_path:
-            markdown_lines.append(f"**Forecast data path:** {os.path.basename(forecast_data_path)}")
-            markdown_lines.append("")
+        # ----- 2.1. Add the processed answer to the markdown lines -----
 
-        if metadata:
-            markdown_lines.append("**Configuration:**")
-            for key, value in metadata.items():
-                markdown_lines.append(f"- {key}: {value}")
-        
         markdown_lines.extend([
-            "",
-            "---",
-            "",
             processed_answer,  # Use the processed answer with injected sections
             "",
             "---",
-            "",
-            f"*Report generated using GraphRAG pipeline at {timestamp}*"
+            ""
         ])
+
+        # ----- 2.2. Add a metadata section at the end of the report -----
+
+        metadata_lines = [
+            f"# Metadata",  # Title for the metadata section
+            ""
+        ]
+        
+        metadata_lines.append(f"**Generated on:** {timestamp}")
+        metadata_lines.append("")
+
+        if country:
+            metadata_lines.append(f"**Country:** {country}")
+            metadata_lines.append("")
+
+        if retriever_type:
+            metadata_lines.append(f"**Retriever used for report generation:** {retriever_type}")
+            metadata_lines.append("")
+            
+        if forecast_data_path:
+            metadata_lines.append(f"**Forecast data path:** {os.path.basename(forecast_data_path)}")
+            metadata_lines.append("")
+
+        if metadata:
+            metadata_lines.append("**Configuration:**")
+            for key, value in metadata.items():
+                metadata_lines.append(f"- {key}: {value}")
+        
+        markdown_lines.extend(metadata_lines)
         
         return "\n".join(markdown_lines)

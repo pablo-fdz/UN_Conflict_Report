@@ -188,7 +188,7 @@ class AccuracyEvaluator:
 
         Args:
             evaluated_data: The list of sections with evaluated claims. The structure is expected to be:
-                [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': ['answer_1', 'source_1'], ...}, 'conclusion': 'true/false/mixture/error', 'justification': 'justification_text'}, ...]}, ...]
+                [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': ['answer_1', 'source_1'], ...}, 'conclusion': 'true/false/mixed/error', 'justification': 'justification_text'}, ...]}, ...]
             country: The country name for the report.
             retriever_type: The retriever type used.
 
@@ -197,7 +197,7 @@ class AccuracyEvaluator:
         """
 
         # Initialize overall stats
-        overall_stats = {"true": 0, "false": 0, "mixture": 0, "error": 0, "total": 0}
+        overall_stats = {"true": 0, "false": 0, "mixed": 0, "error": 0, "total": 0}
         report_lines = []
 
         # First, calculate overall stats
@@ -213,24 +213,22 @@ class AccuracyEvaluator:
 
         # Add overall header
         report_lines.append(f"# Accuracy Report - {country}")
-        report_lines.append(f"**Retriever:** {retriever_type}")
-        report_lines.append(f"**Generated on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        report_lines.append("---")
-        report_lines.append("## Overall Accuracy")
+        report_lines.append("")
+        report_lines.append("**Overall Accuracy**")
         if overall_stats["total"] > 0:
             report_lines.append(f"- **Total Claims:** {overall_stats['total']}")
             report_lines.append(f"- **True:** {overall_stats['true']} ({get_perc(overall_stats['true'], overall_stats['total'])})")
             report_lines.append(f"- **False:** {overall_stats['false']} ({get_perc(overall_stats['false'], overall_stats['total'])})")
-            report_lines.append(f"- **Mixture:** {overall_stats['mixture']} ({get_perc(overall_stats['mixture'], overall_stats['total'])})")
+            report_lines.append(f"- **Mixed:** {overall_stats['mixed']} ({get_perc(overall_stats['mixed'], overall_stats['total'])})")
         else:
             report_lines.append("No claims were evaluated.")
-        report_lines.append("---")
+        report_lines.append("")
 
         # Add section-by-section breakdown
         for section in evaluated_data:
             section_title = section.get("title_section", "Untitled Section")  # Get the title of the section, default to "Untitled Section"
             section_claims = section.get("claims", [])  # Get the list of claims in the section
-            section_stats = {"true": 0, "false": 0, "mixture": 0, "error": 0, "total": 0}  # Initialize section stats
+            section_stats = {"true": 0, "false": 0, "mixed": 0, "error": 0, "total": 0}  # Initialize section stats
             
             for claim in section_claims:  # Iterate through each claim in the section
                 conclusion = claim.get("conclusion", "error")  # Get the conclusion of the claim, default to "error"
@@ -242,7 +240,7 @@ class AccuracyEvaluator:
                 report_lines.append(f"**Section Score:** "
                                     f"True: {get_perc(section_stats['true'], section_stats['total'])}, "
                                     f"False: {get_perc(section_stats['false'], section_stats['total'])}, "
-                                    f"Mixture: {get_perc(section_stats['mixture'], section_stats['total'])}")
+                                    f"Mixed: {get_perc(section_stats['mixed'], section_stats['total'])}")
             
             for i, claim in enumerate(section_claims):
                 claim_text = claim.get("claim")
@@ -263,7 +261,7 @@ class AccuracyEvaluator:
 
                 report_lines.append(f"\n### Claim {i+1}: {conclusion}")
                 report_lines.append(f"> {claim_text}")
-                if justification and conclusion in ["FALSE", "MIXTURE"]:
+                if justification and conclusion in ["FALSE", "MIXED"]:
                     report_lines.append("")
                     report_lines.append(f"**Justification:** {justification}")
                 if unique_sources:
@@ -274,11 +272,22 @@ class AccuracyEvaluator:
                 else:  # If there are no sources, indicate "N/A"
                     report_lines.append(f"**Source:** N/A or ACLED CAST")
             
-            report_lines.append("\n---")
+            report_lines.append("")
+            report_lines.append("---")
+            report_lines.append("")
+
+        # Add metadata section
+        report_lines.append("# Accuracy Report Metadata")
+        report_lines.append("")
+        report_lines.append(f"**Generated on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report_lines.append("")
+        report_lines.append(f"**Country:** {country}")
+        report_lines.append("")
+        report_lines.append(f"**Retriever used for answer generation:** {retriever_type}")
 
         return "\n".join(report_lines)
 
-    def format_intermediate_corrected_report(self, corrected_sections: list, original_report_content: str) -> str:
+    def format_intermediate_corrected_report(self, corrected_sections: list) -> str:
         """
         Formats an intermediate corrected report from rewritten sections.
 
@@ -297,20 +306,16 @@ class AccuracyEvaluator:
             str: The formatted markdown content of the intermediate corrected report.
         """
         report_lines = []
-        
-        # 1. Keep the content of the original report before the first heading 2
-        preamble = original_report_content.split('\n## ', 1)[0]
-        report_lines.append(preamble)
 
-        all_sources = {}  # Use a dictionary to store unique sources with their citation numbers
-
-        # 2. Append corrected sections
+        # Append corrected sections
         for section in corrected_sections:  # Loop over the dictionaries in the corrected_sections list
             title = section.get("title_section", "Untitled Section")
             content = section.get("corrected_content", "")  # Get the corrected content of the section, default to an empty string
             sources = section.get("sources", [])  # Default to an empty list if no sources are provided
 
+            # Add section heading and a blank line before its content
             report_lines.append(f"\n## {title}")
+            report_lines.append("")
             report_lines.append(content)
 
             # 3. Add a "Sources" subsection (heading 3) for the current section
@@ -412,7 +417,7 @@ class AccuracyEvaluator:
             # Adjust asset paths for reports saved in a subdirectory to point to the parent assets folder
             report_content_adjusted = re.sub(r"!\[(.*?)\]\((assets/.*?)\)", r"![\1](../\2)", report_content)
             with open(save_path, 'w', encoding='utf-8') as f:
-                f.write(report_content)
+                f.write(report_content_adjusted)
             print(f"Accuracy report saved to: {save_path}")
             return str(save_path)
         except Exception as e:

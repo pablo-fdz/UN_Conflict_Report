@@ -579,9 +579,52 @@ RETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') +
 apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info
 ```
 
-*Default query* (with proper JSON formatting):
+If you want to extend the number of hops done from each text chunk (e.g., 3-5 hops), the following change should be made: `[relList:!FROM_CHUNK]-{3,5}`.
+
+*Suggested query* with the extraction of document metadata from the text chunks:
+
 ```cypher
+// 1) Go out 2-3 hops in the entity graph and get relationships
+WITH node AS chunk
+MATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()
+UNWIND relList AS rel
+
+// 2) Collect chunks and KG relationships
+WITH collect(DISTINCT chunk) AS chunks,
+     collect(DISTINCT rel) AS kg_rels
+
+// 3) Also pull in each chunk’s Document (optional match to avoid dropping the chunk if it has no FROM_DOCUMENT edge)
+UNWIND chunks AS c
+OPTIONAL MATCH (c)-[:FROM_DOCUMENT]->(doc:Document)
+WITH chunks, kg_rels,
+     collect(DISTINCT {domain:doc.domain, url:doc.url, date:doc.date}) AS docs
+
+// 4) Return formatted output
+RETURN
+  '=== text chunks ===\n'
+  + apoc.text.join([c IN chunks | c.text], '\n---\n')
+  + '\n\n=== text chunk document metadata ===\n'
+  + apoc.text.join([d IN docs |
+       d.domain + ' (domain): ' + d.url + ' (URL), ' d.date + '(date)' 
+    ], '\n---\n')
+  + '\n\n=== kg_rels ===\n'
+  + apoc.text.join([r IN kg_rels |
+       startNode(r).name
+       + ' - ' + type(r)
+       + '(' + coalesce(r.details,'') + ')'
+       + ' -> ' + endNode(r).name
+    ], '\n---\n')
+  AS info
+```
+
+*Default query* (with proper JSON formatting):
+```json
 "//1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n//2) collect relationships and text chunks\nWITH collect(DISTINCT chunk) AS chunks,\n collect(DISTINCT rel) AS rels\n\n//3) format and return context\nRETURN '=== text ===\\n' + apoc.text.join([c in chunks | c.text], '\\n---\\n') + '\\n\\n=== kg_rels ===\\n' +\n apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce(r.details, '') + ')' +  ' -> ' + endNode(r).name ], '\\n---\\n') AS info"
+```
+
+*Suggested query* (with proper JSON formatting):
+```json
+"// 1) Go out 2-3 hops in the entity graph and get relationships\nWITH node AS chunk\nMATCH (chunk)<-[:FROM_CHUNK]-()-[relList:!FROM_CHUNK]-{1,2}()\nUNWIND relList AS rel\n\n// 2) Collect chunks and KG relationships\nWITH collect(DISTINCT chunk) AS chunks,\n     collect(DISTINCT rel) AS kg_rels\n\n// 3) Also pull in each chunk’s Document (optional match to avoid dropping the chunk if it has no FROM_DOCUMENT edge)\nUNWIND chunks AS c\nOPTIONAL MATCH (c)-[:FROM_DOCUMENT]->(doc:Document)\nWITH chunks, kg_rels,\n     collect(DISTINCT {domain:doc.domain, url:doc.url, date:doc.date}) AS docs\n\n// 4) Return formatted output\nRETURN\n  '=== text chunks ===\\n'\n  + apoc.text.join([c IN chunks | c.text], '\\n---\\n')\n  + '\\n\\n=== text chunk document metadata ===\\n'\n  + apoc.text.join([d IN docs |\n       d.domain + ' (domain): ' + d.url + ' (URL), ' + d.date + '(date)'\n    ], '\\n---\\n')\n  + '\\n\\n=== kg_rels ===\\n'\n  + apoc.text.join([r IN kg_rels |\n       startNode(r).name\n       + ' - ' + type(r)\n       + '(' + coalesce(r.details,'') + ')'\n       + ' -> ' + endNode(r).name\n    ], '\\n---\\n')\n  AS info"
 ```
 
 *Recommended query*: set a query that is able to extract all of the necessary context surrounding an event (actors, countries, etc.) as well as the extraction of the sources for proper referencing. Consider the graph schema when setting this query.
@@ -846,7 +889,7 @@ The prompt used to make a final judgment (true, false, or mixture) on a claim ba
 *Suggested prompt*:
 
 ```json
-"You are an expert fact-checker. Your task is to evaluate a claim based on a set of questions and their corresponding answers, as well as a list of previously verified true claims. The answers are generated from a knowledge base. Based on all the information provided, determine if the claim is true, false, or a mixture of true and false.\n\n- **true**: The provided information fully supports the claim. The claim can also be considered true if it can be logically inferred from the previously verified true claims.\n- **false**: The provided information explicitly contradicts the claim.\n- **mixture**: The provided information partially supports the claim, supports some parts but not others, or is insufficient to make a full determination.\n\nHere is the claim and the supporting information:\n\n**Claim to Evaluate:**\n\"{claim_text}\"\n\n**Questions and Answers for the Claim:**\n{questions_and_answers_json}\n\n**Previously Verified True Claims (for context):**\n{previously_true_claims}\n\n Finally, here is the additional context for the forecasts on violent conflicts, with the name of the hotspot regions, the average number of violent events in the last 3 months, the predicted number of violent events in the short term and the percentage increase in the number of violent events is the following:\n{hotspot_regions}\n. This data comes from ACLED Conflict Alert System: https://acleddata.com/conflict-alert-system/, so update accordingly the sources to the questions of the claims related to this data. If the list is empty, there is no data in this regard in this case."
+"You are an expert fact-checker. Your task is to evaluate a claim based on a set of questions and their corresponding answers, as well as a list of previously verified true claims. The answers are generated from a knowledge base. Based on all the information provided, determine if the claim is true, false, or a mixture of true and false.\n\n- **true**: The provided information fully supports the claim. The claim can also be considered true if it can be logically inferred from the previously verified true claims.\n- **false**: The provided information explicitly contradicts the claim.\n- **mixture**: The provided information partially supports the claim, supports some parts but not others, or is insufficient to make a full determination.\n\nHere is the claim and the supporting information:\n\n**Claim to Evaluate:**\n\"{claim_text}\"\n\n**Questions and Answers for the Claim:**\n{questions_and_answers_json}\n\n**Previously Verified True Claims (for context):**\n{previously_true_claims}\n\n Finally, here is the additional context for the forecasts on violent conflicts, with the name of the hotspot regions, the average number of violent events in the last 3 months, the predicted number of violent events in the short term and the percentage increase in the number of violent events:\n{hotspot_regions}\n. This data comes from ACLED Conflict Alert System: https://acleddata.com/conflict-alert-system/, so update accordingly the sources to the questions of the claims related to this data. If the list is empty, there are no forecasts in this case."
 ```
 
 > Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
