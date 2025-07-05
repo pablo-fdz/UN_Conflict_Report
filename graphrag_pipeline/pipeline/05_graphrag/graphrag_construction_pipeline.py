@@ -576,11 +576,12 @@ class GraphRAGConstructionPipeline:
 
         metadata_lines = [
             f"# Metadata",  # Title for the metadata section
-            "",
-            f"**Generated on:** {timestamp}",
             ""
         ]
         
+        metadata_lines.append(f"**Generated on:** {timestamp}")
+        metadata_lines.append("")
+
         if country:
             metadata_lines.append(f"**Country:** {country}")
             metadata_lines.append("")
