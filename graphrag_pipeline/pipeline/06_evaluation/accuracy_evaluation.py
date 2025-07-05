@@ -347,6 +347,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
     """Main function to run the evaluator pipeline."""
     
     # ==================== 1. Setup ====================
+
     configs = load_configurations()
     neo4j_uri = os.getenv('NEO4J_URI')
     neo4j_username = os.getenv('NEO4J_USERNAME')
@@ -354,11 +355,13 @@ async def main(country: str = None, reports_output_directory: str = None, accura
     gemini_api_key = os.getenv('GEMINI_API_KEY')
     
     # ========== 2. Get report(s) to evaluate ==========
+
     report_paths, country = get_report_paths(country, reports_output_directory, configs['kg_retrieval_config'])
     if not report_paths:
         return
 
     # ========== 3. Class initialization for report assessment ==========
+
     components = initialize_components(configs, gemini_api_key)
     acc_evaluator = components['acc_evaluator']
     check_rate_limit = components['check_rate_limit']
@@ -374,15 +377,71 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
             print(f"\n=== Evaluating Report: {os.path.basename(report_path)} ===\n")
 
-            # --- Logic to get forecast data that was originally passed to the LLM ---
-            forecast_data = None
-            hotspot_regions = None
+            # --- Read the report content ---
+
+            if not report_path.endswith('.md'):
+                raise ValueError("The file must be a .md Markdown file.")
+
             try:
                 with open(report_path, 'r', encoding='utf-8') as f:
-                    original_report_content_for_forecast = f.read()
-                
+                    original_report_content = f.read()
+            except FileNotFoundError:
+                print(f"Error: Report file not found at {report_path}.")
+                continue
+            
+            # Extract the original title (heading 1) from the report content
+            # (assuming the title is the first line starting with '# ' and does not contain 'metadata')
+            title_match = re.search(r"^# (?!.*metadata)(.+)", original_report_content, re.MULTILINE)
+            if title_match:
+                original_title = title_match.group(1).strip()
+                print(f"Original report title: {original_title}")
+            else:
+                print("Warning: No title found in the report content. Using default title.")
+                original_title = f"Security Report: {country}"
+
+            # Store the content of sections to be skipped during evaluation (non-LLM-generated sections)
+            
+            metadata_section_content = ""
+            conflict_forecast_section_content = ""
+            acled_section_content = ""
+
+            # --- Logic to find, store, and remove metadata section before evaluation ---
+
+            metadata_title = "Metadata"  # Adjust this if the metadata section title changes
+            # Pattern to find the metadata section until the end of the file or any
+            # other section (any heading)
+            metadata_pattern = rf"(# {metadata_title}[\s\S]*)^(?=\n# |\n## |\n### |\n#### |$)"
+            metadata_match = re.search(metadata_pattern, original_report_content, re.MULTILINE)
+            if metadata_match:
+                metadata_section_content = metadata_match.group(1).strip()
+                # Remove the section from the content to be evaluated
+                original_report_content = original_report_content.replace(metadata_section_content, "")
+
+            # --- Logic to find, store, and remove forecast sections before evaluation ---
+            
+            # Pattern to find the "Conflict Forecast" section (H3) and its content until the next H3 or H2
+            conflict_forecast_pattern = rf"(### Armed Conflict Probability Forecast \(Conflict Forecast\)[\s\S]*?)(?=\n### |\n## )"
+            conflict_match = re.search(conflict_forecast_pattern, original_report_content, re.MULTILINE)
+            if conflict_match:
+                conflict_forecast_section_content = conflict_match.group(1).strip()
+                # Remove the section from the content to be evaluated
+                original_report_content = original_report_content.replace(conflict_match.group(1), "")
+
+            # Pattern to find the "ACLED" section (H4) and its content until the next H4 or H3
+            acled_pattern = rf"(#### Predicted Increase in Violent Events in the Short Term \(ACLED\)[\s\S]*?)(?=\n#### |\n### )"
+            acled_match = re.search(acled_pattern, original_report_content, re.MULTILINE)
+            if acled_match:
+                acled_section_content = acled_match.group(1).strip()
+                # Remove the section from the content to be evaluated
+                original_report_content = original_report_content.replace(acled_match.group(1), "")
+
+            # --- Logic to get forecast data that was originally passed to the LLM in the metadata section ---
+
+            forecast_data = None
+            hotspot_regions = None
+            try:                
                 # Capture the forecast data path from the original report content
-                forecast_path_match = re.search(r"\*\*Forecast data path:\*\* (.*\.json)", original_report_content_for_forecast)
+                forecast_path_match = re.search(r"\*\*Forecast data path:\*\* (.*\.json)", metadata_section_content)
                 if forecast_path_match:
                     forecast_filename = forecast_path_match.group(1).strip()  # Get the filename from the match
                     # The assets folder (where forecast data is located) is in 
@@ -402,15 +461,13 @@ async def main(country: str = None, reports_output_directory: str = None, accura
             except Exception as e:
                 print(f"Warning: Could not load forecast data. Error: {e}")
 
+            # --- Process the report content to extract sections for evaluation ---
+
             # Extract each section (heading 2) as different dictionary entries
             sections = components['report_processor'].get_sections(
                 pattern=configs['evaluation_config']['section_split']['split_pattern'],
-                file_path=report_path
+                file_content=original_report_content  # The content of the report without metadata and forecast sections
             )  # results in sections: Dict[str, str] (key is section title, value is section content)
-
-            # Store the content of sections to be skipped during evaluation (non-LLM-generated sections)
-            conflict_forecast_section_content = ""
-            acled_section_content = ""
 
             # Iterate over each retriever class and initialize it
             for retriever_name, retriever_instance in retriever_classes.items():
@@ -430,24 +487,6 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         print(f"Skipping section: {section_title}")
                         continue  # Skip these sections
                     
-                    # --- Logic to find, store, and remove forecast sections before evaluation ---
-                    
-                    # Pattern to find the "Conflict Forecast" section (H3) and its content until the next H3 or H2
-                    conflict_forecast_pattern = r"(\n?### Armed Conflict Probability Forecast \(Conflict Forecast\)[\s\S]*?)(?=\n###|\n##|$)"
-                    conflict_match = re.search(conflict_forecast_pattern, section_content, re.DOTALL)
-                    if conflict_match:
-                        conflict_forecast_section_content = conflict_match.group(1).strip()
-                        # Remove the section from the content to be evaluated
-                        section_content = section_content.replace(conflict_match.group(1), "")
-
-                    # Pattern to find the "ACLED" section (H4) and its content until the next H4 or H3
-                    acled_pattern = r"(\n?#### Predicted Increase in Violent Events in the Short Term \(ACLED\)[\s\S]*?)(?=\n####|\n###|$)"
-                    acled_match = re.search(acled_pattern, section_content, re.DOTALL)
-                    if acled_match:
-                        acled_section_content = acled_match.group(1).strip()
-                        # Remove the section from the content to be evaluated
-                        section_content = section_content.replace(acled_match.group(1), "")
-
                     # If section content is empty after removing subsections, skip it
                     if not section_content.strip():
                         print(f"Skipping section '{section_title}' as it is empty after removing forecast content.")
@@ -484,15 +523,11 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                     # ========== 5. Execute GraphRAG pipeline to extract answers for each question ==========
 
-                    # The GraphRAG class is too rigid for this use case, 
+                    # The neo4j-GraphRAG class is too rigid for this use case, 
                     # as it uses the same `query_text`  both the retriever 
                     # and the LLM prompt. The retriever needs a concise 
                     # search query (the claim, which will be embedded), 
                     # while the LLM needs a  detailed prompt with instructions.
-                    # Therefore, we will manually orchestrate the RAG steps: 
-                    # retrieve, format prompt with the retrieved context and
-                    # finally prompting the LLM with the retrieved context
-                    # and the final question in order to generate the answers.
                     # This is all integrated within our CustomGraphRAG class,
                     # created following the code of the GraphRAG class of 
                     # neo4j-graphrag.
@@ -503,9 +538,9 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         prompt_template=components['rag_template']  # RAG template for formatting the prompt
                     )
 
-                    # We will run GraphRAG for each claim and its associated questions
-                    # This will run the LLM for as many times as claims in the report
-                    # (e.g., 40 times if there are 40 claims in the report)
+                    # We will run GraphRAG for each claim each generated question.
+                    # This will run the LLM for as many times as claims times questions 
+                    # (for each question) in the report.
                     for claim, questions in claims_and_questions.items():
                         
                         generated_answers_for_claim = {}  # To store answers for all questions of this claim
@@ -520,7 +555,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                             formatted_query_text = configs['evaluation_config']['graphrag']['query_text'].format(
                                 claim=claim, 
-                                questions=question
+                                question=question
                             )
                         
                             try:
@@ -534,7 +569,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                     message_history=None,  # Optional message history for conversational context (omitted for now)
                                     examples=configs['evaluation_config']['graphrag'].get('examples', ''),  # Optional examples to guide the LLM's response (defaults to empty string)
                                     retriever_config=configs['evaluation_config']['retrievers'][retriever_name].get('search_params', None),  # Configuration for the search parameters of the input retriever
-                                    return_context=True,  # Whether to return the context used for generating the answer (defaults to True). Can be obtained with graphrag_results['retriever_result']
+                                    return_context=False,  # Whether to return the context used for generating the answer (can be obtained with graphrag_results['retriever_result']). Set to False to only return the generated answer (as we will have MANY contexts).
                                     structured_output=True  # Whether to return the output in a structured format
                                 )
 
@@ -563,12 +598,12 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                     # Create the section data structure
                     if section_claims_list:
                         all_sections_results.append(
-                            {"title_section": section_title, 
+                            {"title_section": section_title,  # Title for the heading 2 section
                              "claims": section_claims_list}
                         )
 
                 # The results are now stored in all_sections_results, which is a list of dictionaries
-                # Each dictionary contains the section title and a list of claims with their questions and answers
+                # Each dictionary contains the section title and a list of claims with their questions, answers and sources
                 # Sample output structure:
                 # [{'title_section': 'section_1', 'claims': [{'claim': 'claim_text', 'questions': {'question_1': ['answer_1', 'source_1], ...}}, ...]}, ...]
                 print(f"Completed processing for retriever '{retriever_name}' with {len(all_sections_results)} sections.")
@@ -606,7 +641,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 questions_and_answers=claim_data["questions"],  # Here we will pass the dictionary with all of the questions and the corresponding answers and sources associated with a claim
                                 base_eval_prompt=base_eval_prompt_template,
                                 previously_true_claims=true_claims_str,
-                                hotspot_regions_data=hotspot_regions,
+                                hotspot_regions_data=hotspot_regions,  # Pass hotspot regions data if available as context for the hotspot data
                                 structured_output=True
                             )
                             llm_usage += 1  # Increment LLM usage for each claim evaluation
@@ -614,6 +649,11 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             # If the claim is true, add it to the list for context in subsequent evaluations
                             if eval_result.get("conclusion") == "true":
                                 previously_true_claims.append(claim_data["claim"])
+                    
+                    # ========== 7. Format and save the accuracy report ==========
+
+                    # In this step, we do NOT append any of the sections that were not evaluated
+                    # and saved
 
                     print("Formatting accuracy report...")
                     report_content = acc_evaluator.format_accuracy_report(
@@ -713,8 +753,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                         # Format intermediate report (in markdown) into a single string
                         intermediate_report = acc_evaluator.format_intermediate_corrected_report(
-                            corrected_sections=corrected_sections,  # List of dictionaries with rewritten sections
-                            original_report_content=original_report_content  # Original report content to include the initial metadata in the rewritten report
+                            corrected_sections=corrected_sections  # List of dictionaries with rewritten sections
                         )
 
                         print("Intermediate report content ready for aggregation.")
@@ -731,7 +770,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
 
                         # ----- Step 3: Aggregate Rewritten Sections into new report -----
 
-                        print("Making the final report coherent by aggregating sources...")
+                        print("Making the final report coherent by aggregating sources and appending the structured sections...")
 
                         aggregation_prompt_template = configs['evaluation_config']['rewrite_config']['aggregation_prompt']
                         aggregation_prompt = aggregation_prompt_template.format(intermediate_report=intermediate_report)
@@ -740,33 +779,97 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                         final_report_response = components['llm_aggregator'].invoke(aggregation_prompt)
                         llm_usage += 1
 
+                        print("Final report response received from the LLM. Appending metadata and structured sections...")
+
                         if final_report_response:
                             
                             final_report_content = final_report_response.content  # Get the final report content from the LLM response
                             
-                            # --- Inject the original structured forecast sections into the final report ---
-                            if conflict_forecast_section_content:
-                                # Inject the "Conflict Forecast" section after "## 3. Forward Outlook",
-                                # using the same logic as for the original report
-                                final_report_content = re.sub(
-                                    r"(## 3\. Forward Outlook[\s\S]*?)(?=\n###|\n##)",
-                                    r"\1\n" + conflict_forecast_section_content,
-                                    final_report_content,
-                                    count=1,
-                                    flags=re.IGNORECASE | re.DOTALL
-                                )
-                                print("Injected 'Conflict Forecast' section into the final report.")
+                            # --- Inject the original title into the final report ---
 
+                            if original_title:
+                                # Remove leading newlines from the shortened content and inject title
+                                final_report_content = original_title + "\n\n" + final_report_content.lstrip()
+                                print("Injected original title into the final report.")
+
+                            # --- Inject the original metadata section into the intermediate report ---
+
+                            if metadata_section_content:
+                                # Inject the metadata section at the end of the report
+                                final_report_content = f"{final_report_content}\n\n---\n\n{metadata_section_content}"
+                                print("Injected 'Metadata' section into the final report.")
+
+                            # --- Inject the original "Conflict Forecast" section into the intermediate report ---
+                            
+                            # Inject the "Conflict Forecast" section after "## 3. Forward Outlook" and any introductory content,
+                            # but before any other H2 or H3 heading
+                            if conflict_forecast_section_content:
+                                # First, find the section in the report
+                                outlook_heading = "## 3. Forward Outlook"
+                                outlook_pos = final_report_content.find(outlook_heading)
+                                
+                                if outlook_pos != -1:  # If the "Forward Outlook" section is found
+                                    # Find the next heading after "Forward Outlook"
+                                    search_from = outlook_pos + len(outlook_heading)
+                                    next_heading_pos = -1
+                                    
+                                    # Search for the next heading (either ## or ###)
+                                    for heading_pattern in ["\n## ", "\n### "]:
+                                        pos = final_report_content.find(heading_pattern, search_from)
+                                        if pos != -1 and (next_heading_pos == -1 or pos < next_heading_pos):
+                                            next_heading_pos = pos
+                                    
+                                    # Insert the content at the right position
+                                    if next_heading_pos != -1:
+                                        # Insert before the next heading
+                                        content_to_end_of_section = final_report_content[outlook_pos:next_heading_pos]
+                                        final_report_content = final_report_content.replace(
+                                            content_to_end_of_section,
+                                            content_to_end_of_section + conflict_forecast_section_content + "\n"
+                                        )
+                                    else:
+                                        # If no next heading, append to the section content
+                                        final_report_content = final_report_content + "\n" + conflict_forecast_section_content + "\n"
+                                    
+                                    print("Injected 'Conflict Forecast' section into the final report.")
+                                else:
+                                    print("Warning: Could not find 'Forward Outlook' section for injection.")
+
+                            # --- Inject the original "ACLED" section into the intermediate report ---
+
+                            # Inject the "ACLED" section after "### Subnational Perspective" and any introductory content,
+                            # but before any other H3, H2 heading, or Sources section
                             if acled_section_content:
-                                # Inject the "ACLED" section after "### Subnational Perspective"
-                                final_report_content = re.sub(
-                                    r"(### Subnational Perspective[\s\S]*?)(?=\n####|\n###)",
-                                    r"\1\n" + acled_section_content,
-                                    final_report_content,
-                                    count=1,
-                                    flags=re.IGNORECASE | re.DOTALL
-                                )
-                                print("Injected 'ACLED' section into the final report.")
+                                # Find the Subnational Perspective heading
+                                perspective_heading = "### Subnational Perspective"
+                                perspective_pos = final_report_content.find(perspective_heading)
+                                
+                                if perspective_pos != -1:
+                                    # Find the next heading after "Subnational Perspective"
+                                    search_from = perspective_pos + len(perspective_heading)
+                                    next_heading_pos = -1
+                                    
+                                    # Search for the next heading (either ##, ### or ####)
+                                    for heading_pattern in ["\n## ", "\n### ", "\n#### "]:
+                                        pos = final_report_content.find(heading_pattern, search_from)
+                                        if pos != -1 and (next_heading_pos == -1 or pos < next_heading_pos):
+                                            next_heading_pos = pos
+                                    
+                                    # Insert the content at the right position
+                                    if next_heading_pos != -1:
+                                        # Insert before the next heading
+                                        content_to_end_of_section = final_report_content[perspective_pos:next_heading_pos]
+                                        final_report_content = final_report_content.replace(
+                                            content_to_end_of_section,
+                                            content_to_end_of_section + "\n" + acled_section_content + "\n"
+                                        )
+                                    else:
+                                        # If no next heading, append to the section content
+                                        final_report_content = final_report_content + acled_section_content
+                                    
+                                    print("Injected 'ACLED' section into the final report.")
+                                else:
+                                    print("Warning: Could not find 'Subnational Perspective' section for injection.")
                             
                             # Save the final, corrected report
                             acc_evaluator.save_corrected_report(
