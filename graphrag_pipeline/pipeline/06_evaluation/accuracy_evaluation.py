@@ -168,7 +168,7 @@ def initialize_components(configs, gemini_api_key):
     # ----- 3.1. Load evaluation configuration -----
 
     # Evaluators and Processors
-    report_processor = ReportProcessor(pattern=evaluation_config['section_split']['split_pattern'])
+    report_processor = ReportProcessor()
     acc_evaluator = AccuracyEvaluator(
         base_claims_prompt=evaluation_config['accuracy_evaluation']['base_claims_prompt'],
         base_questions_prompt=evaluation_config['accuracy_evaluation']['base_questions_prompt']
@@ -381,16 +381,19 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 with open(report_path, 'r', encoding='utf-8') as f:
                     original_report_content_for_forecast = f.read()
                 
+                # Capture the forecast data path from the original report content
                 forecast_path_match = re.search(r"\*\*Forecast data path:\*\* (.*\.json)", original_report_content_for_forecast)
                 if forecast_path_match:
-                    forecast_filename = forecast_path_match.group(1).strip()
-                    # The assets folder is in the same directory as the original report
+                    forecast_filename = forecast_path_match.group(1).strip()  # Get the filename from the match
+                    # The assets folder (where forecast data is located) is in 
+                    # the same directory as the original report
                     assets_dir = Path(report_path).parent / 'assets'
                     forecast_filepath = assets_dir / forecast_filename
                     if forecast_filepath.is_file():
                         with open(forecast_filepath, 'r', encoding='utf-8') as f:
                             forecast_data = json.load(f)
                         print(f"Loaded forecast data from: {forecast_filepath}")
+                        # Extract hotspot regions if available, within ACLED cast analysis
                         if forecast_data['acled_cast_analysis']:
                             acled_cast_analysis = forecast_data['acled_cast_analysis']
                             hotspot_regions = acled_cast_analysis.get('hotspot_regions', None)
@@ -399,8 +402,11 @@ async def main(country: str = None, reports_output_directory: str = None, accura
             except Exception as e:
                 print(f"Warning: Could not load forecast data. Error: {e}")
 
-            # Extract each section as different dictionary entries
-            sections = components['report_processor'].get_sections(file_path=report_path)  # sections: Dict[str, str] (key is section title, value is section content)
+            # Extract each section (heading 2) as different dictionary entries
+            sections = components['report_processor'].get_sections(
+                pattern=configs['evaluation_config']['section_split']['split_pattern'],
+                file_path=report_path
+            )  # results in sections: Dict[str, str] (key is section title, value is section content)
 
             # Store the content of sections to be skipped during evaluation (non-LLM-generated sections)
             conflict_forecast_section_content = ""

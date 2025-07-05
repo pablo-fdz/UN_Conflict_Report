@@ -2,8 +2,7 @@ import os
 import re
 
 class ReportProcessor:
-    def __init__(self, pattern: str):
-        self.pattern = pattern
+    def __init__(self):
         self.content = ""
         self.sections = {}
 
@@ -25,14 +24,17 @@ class ReportProcessor:
 
         return self.content
 
-    def get_sections(self, file_path: str=None, file_content=None) -> dict: 
+    def get_sections(self, pattern: str = "(?m)^## (.+?)\\s*\\n(.*?)(?=^## |\\Z)", file_path: str=None, file_content=None) -> dict: 
         """
         Splits the markdown content into sections based on the RegEx pattern 
         (e.g., level 2 headings with ##).
 
         Args:
+            pattern (str): A regular expression pattern to match section titles and bodies.
+                Defaults to matching level 2 headings (##) and their content.
             file_path (str): Path to the .md file.
-            file_content (str, optional): If provided, this content will be used instead of reading from the file.
+            file_content (str, optional): If provided, this content will be used 
+                instead of reading from the file. 
         
         Returns:
             dict: A dictionary where keys are section titles and values are section bodies.
@@ -55,7 +57,7 @@ class ReportProcessor:
         else:
             raise ValueError("Either file_path or file_content must be provided.")
 
-        matches = re.findall(self.pattern, self.content, re.DOTALL)
+        matches = re.findall(pattern, self.content, re.DOTALL)
 
         self.sections = {title.strip(): body.strip() for title, body in matches}  # Key is title, value is body
 
