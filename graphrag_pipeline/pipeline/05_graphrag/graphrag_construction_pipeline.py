@@ -460,17 +460,17 @@ class GraphRAGConstructionPipeline:
             # Create the structured text for this section
             conflict_forecast_text = [
                 "",  # Initialize with a newline for spacing 
-                "### Armed Conflict Probability Forecast (Conflict Forecast)",
+                "### Armed Conflict Probability Forecast (ConflictForecast)",
                 ""  # Initialize with an empty line for spacing
             ]
             
-            conflict_forecast_text.append(f"According to [ConflictForecast](https://conflictforecast.org/), the predicted probability of armed conflict in {country} in the next 3 months is of {conflict_forecast_prediction:.2%}.")
+            conflict_forecast_text.append(f"According to [ConflictForecast](https://conflictforecast.org/), there is a {conflict_forecast_prediction:.2%} estimated probability that {country} will experience an outbreak of armed conflict within the next three months.")
             conflict_forecast_text.append("")
-            conflict_forecast_text.append(f"*This prediction represents the risk that a country suffers an outbreak of armed conflict within the next three months, i.e. that the country goes from no fatalities to over 0.5 fatalities per one million inhabitants within a time horizon of three months.*")
+            conflict_forecast_text.append(f"*This forecast reflects the likelihood that the country will exceed a threshold of 0.5 fatalities per one million inhabitants over the course of three months.*")
             conflict_forecast_text.append("")
 
             # Add more structured text here as needed.
-            conflict_forecast_text.append(f"The following chart displays the armed conflict risk trend since 2020 until the present day:")
+            conflict_forecast_text.append(f"The trend in armed conflict risk, 2016-{datetime.now().year}.")
 
             # Make chart path relative for markdown file
             relative_line_chart_path = os.path.join('assets', os.path.basename(line_chart_path))

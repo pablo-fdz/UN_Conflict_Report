@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock
 import polars as pl
 import neo4j
 from tests.fixtures.sample_data import (
-    SAMPLE_ACLED_DATA, SAMPLE_FACTIVA_DATA, SAMPLE_GOOGLE_NEWS_DATA
+    SAMPLE_ACLED_DATA, SAMPLE_FACTAL_DATA, SAMPLE_GOOGLE_NEWS_DATA
 )
 
 class MockACLEDAPI:
@@ -35,11 +35,11 @@ class MockACLEDAPI:
         """Simulate API error for testing error handling."""
         raise ConnectionError("ACLED API unavailable")
 
-class MockFactivaAPI:
-    """Mock Factiva API for testing data ingestion."""
+class MockFactalAPI:
+    """Mock Factal API for testing data ingestion."""
     
     def __init__(self, return_data: Optional[List[Dict]] = None):
-        self.return_data = return_data or SAMPLE_FACTIVA_DATA
+        self.return_data = return_data or SAMPLE_FACTAL_DATA
         self.call_count = 0
         
     def search(self, query: str, max_results: int = 100, **kwargs) -> pl.DataFrame:

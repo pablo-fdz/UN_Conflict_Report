@@ -1,7 +1,7 @@
 """
 Unit tests for data ingestion pipeline components.
 
-Tests the ACLED, Factiva, and Google News data ingestion scripts.
+Tests the ACLED, Factal, and Google News data ingestion scripts.
 """
 
 import unittest
@@ -10,7 +10,7 @@ import pytest
 
 # Import test fixtures and mocks
 try:
-    from tests.fixtures.sample_data import SAMPLE_ACLED_DATA, SAMPLE_FACTIVA_DATA, SAMPLE_GOOGLE_NEWS_DATA
+    from tests.fixtures.sample_data import SAMPLE_ACLED_DATA, SAMPLE_FACTAL_DATA, SAMPLE_GOOGLE_NEWS_DATA
     HAS_DEPENDENCIES = True
 except ImportError as e:
     print(f"Warning: Cannot import test dependencies: {e}")
@@ -64,33 +64,33 @@ class TestACLEDIngestion(unittest.TestCase):
             self.assertIn('country', event)
 
 
-class TestFactivaIngestion(unittest.TestCase):
-    """Test cases for Factiva data ingestion."""
+class TestFactalIngestion(unittest.TestCase):
+    """Test cases for Factal data ingestion."""
     
     def setUp(self):
         """Set up test fixtures."""
         if HAS_DEPENDENCIES:
-            self.sample_factiva_data = SAMPLE_FACTIVA_DATA.copy()
+            self.sample_factal_data = SAMPLE_FACTAL_DATA.copy()
         
-    def test_factiva_search_query_construction(self):
-        """Test construction of Factiva search queries."""
-        pytest.skip("Factiva ingestion module implementation needed")
+    def test_factal_search_query_construction(self):
+        """Test construction of Factal search queries."""
+        pytest.skip("Factal ingestion module implementation needed")
         
-    def test_factiva_data_parsing(self):
-        """Test parsing of Factiva API responses."""
-        pytest.skip("Factiva ingestion module implementation needed")
+    def test_factal_data_parsing(self):
+        """Test parsing of Factal API responses."""
+        pytest.skip("Factal ingestion module implementation needed")
         
-    def test_factiva_error_handling(self):
-        """Test Factiva API error handling."""
-        pytest.skip("Factiva ingestion module implementation needed")
+    def test_factal_error_handling(self):
+        """Test Factal API error handling."""
+        pytest.skip("Factal ingestion module implementation needed")
         
-    def test_factiva_data_structure_validation(self):
-        """Test Factiva data structure validation."""
+    def test_factal_data_structure_validation(self):
+        """Test Factal data structure validation."""
         if not HAS_DEPENDENCIES:
             pytest.skip("Test dependencies not available")
             
         # Test that sample data has expected structure
-        for article in self.sample_factiva_data:
+        for article in self.sample_factal_data:
             self.assertIsInstance(article, dict)
             self.assertIn('title', article)
             self.assertIn('content', article)
@@ -138,12 +138,12 @@ class TestDataIntegration(unittest.TestCase):
             
         # Test that all data sources can be converted to standard format
         acled_df = pl.DataFrame(SAMPLE_ACLED_DATA)
-        factiva_df = pl.DataFrame(SAMPLE_FACTIVA_DATA)
+        factal_df = pl.DataFrame(SAMPLE_FACTAL_DATA)
         google_df = pl.DataFrame(SAMPLE_GOOGLE_NEWS_DATA)
         
         # Verify DataFrames were created successfully
         self.assertGreater(len(acled_df), 0)
-        self.assertGreater(len(factiva_df), 0)
+        self.assertGreater(len(factal_df), 0)
         self.assertGreater(len(google_df), 0)
         
     def test_data_deduplication(self):
@@ -175,9 +175,9 @@ class TestDataIntegration(unittest.TestCase):
             acled_df = pl.DataFrame(SAMPLE_ACLED_DATA)
             self.assertGreater(len(acled_df), 0)
             
-            # Test Factiva data validation
-            factiva_df = pl.DataFrame(SAMPLE_FACTIVA_DATA)
-            self.assertGreater(len(factiva_df), 0)
+            # Test Factal data validation
+            factal_df = pl.DataFrame(SAMPLE_FACTAL_DATA)
+            self.assertGreater(len(factal_df), 0)
             
             # Test Google News data validation
             google_df = pl.DataFrame(SAMPLE_GOOGLE_NEWS_DATA)

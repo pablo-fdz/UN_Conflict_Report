@@ -1,7 +1,7 @@
 """
 Sample data fixtures for testing pipeline components.
 
-This module provides sample data that mimics real data from ACLED, Factiva, 
+This module provides sample data that mimics real data from ACLED, Factal, 
 and Google News sources for use in unit and integration tests.
 """
 
@@ -48,8 +48,8 @@ SAMPLE_ACLED_DATA = [
     }
 ]
 
-# Sample Factiva data
-SAMPLE_FACTIVA_DATA = [
+# Sample Factal data
+SAMPLE_FACTAL_DATA = [
     {
         "title": "Sudan Peace Talks Resume in Jeddah",
         "content": "Peace negotiations between Sudanese military factions resumed in Jeddah today, with mediators from Saudi Arabia and the United States facilitating discussions. The talks aim to establish a ceasefire and humanitarian corridors.",
@@ -131,7 +131,7 @@ SAMPLE_CONFIG = {
             "end_date": "2024-01-31",
             "limit": 1000
         },
-        "factiva": {
+        "factal": {
             "search_terms": ["Sudan", "conflict", "peace"],
             "max_results": 500
         },
@@ -158,9 +158,9 @@ def get_sample_acled_dataframe() -> pl.DataFrame:
     """Return sample ACLED data as a Polars DataFrame."""
     return pl.DataFrame(SAMPLE_ACLED_DATA)
 
-def get_sample_factiva_dataframe() -> pl.DataFrame:
-    """Return sample Factiva data as a Polars DataFrame."""
-    return pl.DataFrame(SAMPLE_FACTIVA_DATA)
+def get_sample_factal_dataframe() -> pl.DataFrame:
+    """Return sample Factal data as a Polars DataFrame."""
+    return pl.DataFrame(SAMPLE_FACTAL_DATA)
 
 def get_sample_google_news_dataframe() -> pl.DataFrame:
     """Return sample Google News data as a Polars DataFrame."""
@@ -241,7 +241,7 @@ class SampleKGData:
                 "text": "Humanitarian organizations struggle to deliver aid to conflict-affected areas due to security constraints.",
                 "country": "Sudan", 
                 "date": "2024-01-17",
-                "source": "Factiva",
+                "source": "Factal",
                 "event_type": "Other"
             }
         ]
@@ -258,9 +258,9 @@ class SampleKGData:
         return SAMPLE_GOOGLE_NEWS_DATA
     
     @staticmethod
-    def sample_factiva_data() -> List[Dict]:
-        """Return sample Factiva data."""
-        return SAMPLE_FACTIVA_DATA
+    def sample_factal_data() -> List[Dict]:
+        """Return sample Factal data."""
+        return SAMPLE_FACTAL_DATA
     
     @staticmethod
     def sample_kg_entities() -> List[Dict]:
