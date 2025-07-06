@@ -611,7 +611,7 @@ def create_tabular_chart(all_regions, country):
         #       f"Number of Forecasted Events Relative to Last Month",
         xaxis_title="Percent Change (%)",
         yaxis_title="Regions",
-        font=dict(size=11, family="Arial, sans-serif"),
+        font=dict(size=11, family="Arial, sans-serif", color='black'),
         uniformtext_minsize=12,  # Ensures all bar labels are at least size 12
         uniformtext_mode='show', # Show even if they overflow
         margin=dict(l=50, r=50, t=30, b=80),  # Increased right margin for multi-line labels
@@ -784,7 +784,7 @@ def plot_conflict_forecast(country: str):
             (pl.col("year") + "-" + pl.col("month")).str.to_datetime("%Y-%m").alias("date")
         ]).filter(pl.col("year").cast(int) >= 2016)
         if df.height == 0:
-            raise ValueError(f"No data for {country} from 2020")
+            raise ValueError(f"No data for {country} from 2016")
 
         pdf = df.select(["date", "ons_armedconf_03_all"]).to_pandas()
         x, y = pdf["date"], pdf["ons_armedconf_03_all"]
@@ -803,13 +803,13 @@ def plot_conflict_forecast(country: str):
         fig.add_trace(go.Scatter(
             x=[x.iloc[-1]], y=[y.iloc[-1]], mode='markers+text',
             marker=dict(color='darkred', size=8),
-            text=[f'{y.iloc[-1]:.2f}'], textposition='top right',
+            text=[f'{int(y.iloc[-1]*100)/100:.2f}'], textposition='top right',
             textfont=dict(size=12, color='darkred'), showlegend=False
         ))
 
         fig.update_layout(
             xaxis_title='Date', yaxis_title='Conflict Probability',
-            font=dict(size=12, family='Arial, sans-serif'), showlegend=False,
+            font=dict(size=12, family='Arial, sans-serif', color='black'), showlegend=False,
             paper_bgcolor='white', plot_bgcolor='white',
             margin=dict(l=50, r=20, t=30, b=80)
         )
