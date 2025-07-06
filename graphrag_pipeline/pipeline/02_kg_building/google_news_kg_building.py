@@ -18,6 +18,8 @@ import polars as pl
 from pathlib import Path
 import json
 
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 # Setup paths for imports
 script_dir = Path(__file__).parent
 graphrag_pipeline_dir = script_dir.parent.parent
