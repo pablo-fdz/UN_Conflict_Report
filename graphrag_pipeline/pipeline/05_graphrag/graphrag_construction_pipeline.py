@@ -174,24 +174,20 @@ class GraphRAGConstructionPipeline:
                 for region in hotspot_regions:
                     region_name = region.get('name', 'Unknown Region')
                     hotspot_regions_list.append(region_name)  # Append the region name to the list
-
-            # Get current month and year, e.g., "July, 2025"
-            current_month_year = datetime.now().strftime("%B, %Y")
+                hotspot_regions_list = ', '.join(hotspot_regions_list)
 
             default_search_text = "Security events, conflicts, and political stability in {country}. Focus on the following conflict hotspots: {hotspot_regions_list}."
 
             # Format the search text for the retriever (i.e., the text that will be used to search the knowledge graph)
             formatted_search_text = self.graphrag_config.get('search_text', default_search_text).format(  # Use the country in the search text if specified, otherwise use an empty string
                 country=country,
-                hotspot_regions_list= ', '.join(hotspot_regions_list) if 'hotspot_regions_list' in locals() else ''  # Use the hotspot regions list if available, otherwise default to empty string
+                hotspot_regions_list= hotspot_regions_list if 'hotspot_regions_list' in locals() else ''  # Use the hotspot regions list if available, otherwise default to empty string
             )  
 
             # Format the query text for generating the report with the input country
             formatted_query_text = self.graphrag_config.get('query_text', '').format(  # Use the information in the query text if specified, otherwise use an empty string
                 country=country,
-                current_month_year=current_month_year,  # Current month and year for the report
-                total_hotspots=total_hotspots if 'total_hotspots' in locals() else 0,  # Use the total hotspots if available, otherwise default to 0
-                hotspot_regions=hotspot_regions if 'hotspot_regions' in locals() else []  # Use the hotspot regions if available, otherwise default to empty list
+                hotspot_regions_list=hotspot_regions_list if 'hotspot_regions_list' in locals() else ''  # Use the hotspot regions list if available, otherwise default to empty string
             )
             
             # Check rate limit before LLM call
