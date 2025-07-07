@@ -410,7 +410,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
             metadata_section_content = ""
             conflict_forecast_section_content = ""
             acled_section_content = ""
-
+        
             # --- Logic to find, store, and remove metadata section before evaluation ---
 
             metadata_title = "Metadata"  # Adjust this if the metadata section title changes
@@ -426,7 +426,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
             # --- Logic to find, store, and remove forecast sections before evaluation ---
             
             # Pattern to find the "Conflict Forecast" section (H3) and its content until the next H3 or H2
-            conflict_forecast_pattern = rf"(### Armed Conflict Probability Forecast \(Conflict Forecast\)[\s\S]*?)(?=\n### |\n## )"
+            conflict_forecast_pattern = rf"(### Armed Conflict Probability Forecast \(ConflictForecast\)[\s\S]*?)(?=\n### |\n## )"
             conflict_match = re.search(conflict_forecast_pattern, original_report_content, re.MULTILINE)
             if conflict_match:
                 conflict_forecast_section_content = conflict_match.group(1).strip()
@@ -434,7 +434,7 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 original_report_content = original_report_content.replace(conflict_match.group(1), "")
 
             # Pattern to find the "ACLED" section (H4) and its content until the next H4 or H3
-            acled_pattern = rf"(#### Predicted Increase in Violent Events in the Short Term \(ACLED\)[\s\S]*?)(?=\n#### |\n### )"
+            acled_pattern = rf"(#### Predicted Increase in Violent Events in the Next Month \(ACLED\)[\s\S]*?)(?=\n#### |\n### )"
             acled_match = re.search(acled_pattern, original_report_content, re.MULTILINE)
             if acled_match:
                 acled_section_content = acled_match.group(1).strip()
