@@ -316,7 +316,12 @@ class AccuracyEvaluator:
             # Add section heading and a blank line before its content
             report_lines.append(f"\n## {title}")
             report_lines.append("")
-            report_lines.append(content)
+            
+            # Ensure there's a newline between the title and the content, which might start with a subheading
+            if content and not content.startswith('\n'):
+                report_lines.append(content)
+            else:
+                report_lines.append(content.lstrip()) # Remove leading space from content if any
 
             # 3. Add a "Sources" subsection (heading 3) for the current section
             if sources:

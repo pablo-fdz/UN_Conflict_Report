@@ -735,6 +735,22 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             corrected_sections=corrected_sections  # List of dictionaries with rewritten sections
                         )
 
+                        # --- Fix for subheading formatting ---
+                        # 1. Find all H3 or deeper headings in the original report
+                        original_subheadings = re.findall(r"^(###+ .*)$", original_report_content, re.MULTILINE)
+                        
+                        # 2. Ensure these headings are correctly formatted in the intermediate report
+                        if original_subheadings:
+                            for heading in original_subheadings:
+                                # Use a regex to find the heading if it's not properly formatted
+                                # (i.e., not preceded by a newline) and replace it.
+                                # The negative lookbehind `(?<!\n)` ensures we only match if there's no newline before.
+                                intermediate_report = re.sub(
+                                    f"(?<!\n)({re.escape(heading.strip())})", 
+                                    r"\n\n\1\n", 
+                                    intermediate_report
+                                )
+
                         print("Intermediate report content ready for aggregation.")
                         print("First 200 characters of the intermediate report content:", intermediate_report[:100])
 
