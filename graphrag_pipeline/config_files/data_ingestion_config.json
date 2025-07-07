@@ -7,15 +7,15 @@
     "sample_size": "50"
   },
   "factal": {
-    "ingestion": false,
-    "include_in_kg": false,
+    "ingestion": true,
+    "include_in_kg": true,
     "ingestion_date_range": "3 months",
     "kg_inclusion_date_range": "3 months",
     "sample_size": "100"
   },
   "acled": {
     "ingestion": true,
-    "include_in_kg": false,
+    "include_in_kg": true,
     "ingestion_date_range": "3 months",
     "kg_inclusion_date_range": "3 months",
     "sample_size": "100"
