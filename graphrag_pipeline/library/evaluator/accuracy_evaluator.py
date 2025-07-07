@@ -329,6 +329,7 @@ class AccuracyEvaluator:
                         full_source = source_item.get('full_source')
                         if num is not None and full_source:
                             report_lines.append(f"[{num}] {full_source}")
+                            report_lines.append("")  # Add a blank line after each source
 
         return "\n".join(report_lines)
 
