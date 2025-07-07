@@ -135,7 +135,7 @@ async def main():
                 # Apply sampling if specified
                 if sample_size:
                     original_size = len(df)
-                    df = df.head(sample_size)
+                    df = df.sample(sample_size, seed=42)
                     print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
                 
                 # Convert date column to string format for metadata
