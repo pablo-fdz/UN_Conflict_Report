@@ -212,6 +212,49 @@ The pipeline supports several retrieval strategies to fetch context from the kno
 
 ### 5. Accuracy Evaluation
 
+```mermaid
+flowchart LR
+ subgraph subGraph1["<b>Final Output<b></b></b>"]
+    direction LR
+        G["Corrected report"]
+  end
+ subgraph s2["<b>Claim Generation<b></b></b>"]
+        n1["Claim 1"]
+        n2["..."]
+        n4["Claim C"]
+  end
+ subgraph s3["<b>Question Generation<b></b></b>"]
+        n5["Question 1"]
+        n6["..."]
+        n7["Question Q"]
+  end
+ subgraph s4["<b>Claim Assessment<b></b></b>"]
+        n12["Assessment of claim"]
+        n14["Assessment of claim"]
+  end
+    n1 --> n5 & n6 & n7
+    n5 --> n8["GraphRAG"]
+    n8 --> n9["Answer"]
+    n7 --> n10["GraphRAG"]
+    n10 --> n11["Answer"]
+    n9 --> n12
+    n11 --> n12
+    n4 --> n13["..."]
+    n13 --> n14
+    n12 --> n15["Accuracy report"]
+    n14 --> n15
+    n15 --> G
+    A["Original Report"] --> n1 & n2 & n4
+
+    n1@{ shape: rect}
+    n2@{ shape: rect}
+    n4@{ shape: rect}
+    style s4 fill:#C8E6C9
+    style s2 fill:#BBDEFB
+    style s3 fill:#FFCDD2
+    style subGraph1 fill:#E1BEE7
+```
+
 -   **Process**: Evaluates the factual accuracy of a generated report. It extracts claims from the report, generates verification questions, and queries the knowledge graph to find supporting or refuting evidence.
 -   **Core Logic**: `AccuracyEvaluator`.
 -   **Configuration**: `config_files/evaluation_config.json`.
