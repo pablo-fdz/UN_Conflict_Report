@@ -6,8 +6,8 @@ from pathlib import Path
 # modules in parent directory)
 script_dir = Path(__file__).parent  # Get the directory where this script is located
 graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
-if graphrag_pipeline_dir not in sys.path:
-    sys.path.append(graphrag_pipeline_dir)
+if str(graphrag_pipeline_dir) not in sys.path:
+    sys.path.append(str(graphrag_pipeline_dir))
 
 # Utilities
 from dotenv import load_dotenv
@@ -33,7 +33,7 @@ class KGConstructionPipeline:
         # modules in parent directory)
         script_dir = Path(__file__).parent  # Get the directory where this script is located
         graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
-        self.config_files_path = os.path.join(graphrag_pipeline_dir, 'config_files')  # Find path to config_files folder
+        self.config_files_path = str(graphrag_pipeline_dir / 'config_files')  # Find path to config_files folder
         self._load_configs()
         self._setup_credentials()
         self._set_llm_rate_limit()
@@ -44,10 +44,10 @@ class KGConstructionPipeline:
 
         try:
             # Load environment variables from .env file
-            load_dotenv(os.path.join(self.config_files_path, '.env'), override=True)
+            load_dotenv(str(Path(self.config_files_path) / '.env'), override=True)
             
             # Load data and KG building configurations
-            with open(os.path.join(self.config_files_path, 'kg_building_config.json'), 'r') as f:
+            with open(str(Path(self.config_files_path) / 'kg_building_config.json'), 'r') as f:
                 self.build_config = json.load(f)
         
         except FileNotFoundError as e:
