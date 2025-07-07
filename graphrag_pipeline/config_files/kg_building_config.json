@@ -1,6 +1,6 @@
 {
     "text_splitter_config": {
-        "chunk_size": 1000,
+        "chunk_size": 2500,
         "chunk_overlap": 200
     },
     "embedder_config": {
