@@ -42,7 +42,7 @@ class GraphRAGResultsBase(BaseModel):
         description="The answer provided in response to the question."
     )
     source: str = Field(
-        description="The source of the answer, which must be in the format `<author (physical person or newspaper>: <URL or reference to a document>`."
+        description="The source of the answer, which must be in the format (example): `<domain>: <url>, <date>`."
     )
 
 class GraphRAGResults(BaseModel):
@@ -81,7 +81,7 @@ class Citations(BaseModel):
         description="The number of the source, which is used for citation purposes."
     )
     full_source: str = Field(
-        description="The full source string, formatted as `<author or newspaper>: <URL or reference to a document>`."
+        description="The full source string, formatted as (example): `<domain>: <url>, <date>`."
     )
 
 class RewriteSectionResults(BaseModel):

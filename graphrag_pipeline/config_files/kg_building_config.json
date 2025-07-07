@@ -357,7 +357,7 @@
         "use_resolver": true,
         "resolver": "SpaCySemanticMatchResolver",
         "SinglePropertyExactMatchResolver_config": {
-            "filter_query": "WHERE NOT 'Document' IN labels(entity)",
+            "filter_query": null,
             "resolve_property": "name"
         },
         "FuzzyMatchResolver_config": {
