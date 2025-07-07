@@ -378,7 +378,7 @@
             "similarity_threshold": 0.85,
             "neo4j_database": "neo4j"
         },
-        "ex_post_resolver": "SpaCySemanticMatchResolver"
+        "ex_post_resolver": "SinglePropertyExactMatchResolver"
     },
     "dev_settings": {
         "build_with_sample_data": false,
