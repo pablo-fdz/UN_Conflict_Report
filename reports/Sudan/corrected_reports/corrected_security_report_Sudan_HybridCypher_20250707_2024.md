@@ -39,6 +39,30 @@ The trend in armed conflict risk, 2016-2025.
 
 ### Subnational Perspective
 
+#### Predicted Increase in Violent Events in the Next Month (ACLED)
+
+[ACLED CAST](https://acleddata.com/conflict-alert-system/) predicts 9 ADM1 regions in Sudan to be hotspots for violent events in the next calendar month (August, 2025).
+
+*An ADM1 region is considered to be a hotspot if the predicted increase in the number of violent events in the next month compared to the 3-month average is at least of 25%.*
+
+The chart below shows regions with a predicted change in violent events.
+
+![ACLED Hotspots Bar Chart](../assets/BarChart_Sudan_2025-07-07-20-23-28.svg)
+
+Considering the hotspot criteria, the following regions are expected to have a significant increase in violent events in August, 2025:
+
+| Region         | Avg. # Violent Events (3 months) | Forecasted # Violent Events | % Increase |
+| -------------- | -------------------------------- | --------------------------- | ---------- |
+| Gedaref        | 0                                | 3                           | 30.0%      |
+| Northern       | 7                                | 9                           | 28.6%      |
+| Blue Nile      | 1                                | 5                           | 400.0%     |
+| Khartoum       | 33                               | 49                          | 48.5%      |
+| River Nile     | 2                                | 6                           | 200.0%     |
+| West Darfur    | 2                                | 4                           | 100.0%     |
+| Sennar         | 2                                | 4                           | 100.0%     |
+| Central Darfur | 5                                | 7                           | 40.0%      |
+| Aj Jazirah     | 7                                | 12                          | 71.4%      |
+
 #### Gedaref
 No specific forward-looking information is available for Gedaref in the provided context.
 
