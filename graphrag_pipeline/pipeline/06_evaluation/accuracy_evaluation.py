@@ -761,6 +761,10 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                             # --- Inject the original title into the final report ---
 
                             if original_title:
+                                # Insert "#" before the original title to make it a heading 1
+                                # if it is not already formatted as such
+                                if not final_report_content.startswith("# "):
+                                    original_title = f"# {original_title}"
                                 # Remove leading newlines from the shortened content and inject title
                                 final_report_content = original_title + "\n\n" + final_report_content.lstrip()
                                 print("Injected original title into the final report.")
