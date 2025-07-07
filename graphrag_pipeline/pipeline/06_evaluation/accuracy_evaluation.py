@@ -174,68 +174,7 @@ def initialize_components(configs, gemini_api_key):
         base_questions_prompt=evaluation_config['accuracy_evaluation']['base_questions_prompt']
     )
 
-    # ----- 3.2. LLM configuration -----
-
-    # Initialize LLM for claims
-    llm_claims_config = evaluation_config['accuracy_evaluation']['llm_claims_config']
-    llm_claims_params = llm_claims_config.get('model_params', {}).copy()
-    llm_claims_params['response_schema'] = Claims  # Set the response schema for the LLM claims model
-    llm_claims = GeminiLLM(
-            model_name=llm_claims_config['model_name'],
-            google_api_key=gemini_api_key,
-            model_params=llm_claims_params
-        )
-    
-    # Initialize LLM for questions
-    llm_questions_config = evaluation_config['accuracy_evaluation']['llm_questions_config']
-    llm_questions_params = llm_questions_config.get('model_params', {}).copy()
-    llm_questions_params['response_schema'] = Questions  # Set the response schema for the LLM questions model
-    llm_questions = GeminiLLM(
-            model_name=llm_questions_config['model_name'],
-            google_api_key=gemini_api_key,
-            model_params=llm_questions_params
-        )
-
-    # Initialize LLM with GraphRAG configurations
-    llm_graphrag_config = evaluation_config['graphrag']['llm_config']
-    llm_graphrag_params = llm_graphrag_config.get('model_params', {}).copy()
-    llm_graphrag_params['response_schema'] = GraphRAGResultsBase  # Set the response schema for the LLM GraphRAG model (dictionary containing a question, its answer and the source)
-    llm_graphrag = GeminiLLM(
-        model_name=llm_graphrag_config['model_name'],
-        google_api_key=gemini_api_key,
-        model_params=llm_graphrag_params
-    )
-
-    # Initialize LLM for evaluation
-    llm_evaluator_config = evaluation_config['accuracy_evaluation']['llm_evaluator_config']
-    llm_evaluator_params = llm_evaluator_config.get('model_params', {}).copy()
-    llm_evaluator_params['response_schema'] = EvaluationResults  # Set the response schema for the LLM evaluation model
-    llm_evaluator = GeminiLLM(
-        model_name=llm_evaluator_config['model_name'],
-        google_api_key=gemini_api_key,
-        model_params=llm_evaluator_params
-    )
-
-    # Initialize LLM for rewriting
-    llm_rewriter_config = evaluation_config['rewrite_config']['llm_rewriter_config']
-    llm_rewriter_params = llm_rewriter_config.get('model_params', {}).copy()
-    llm_rewriter_params['response_schema'] = RewriteSectionResults  # Set the response schema for the LLM rewriter model
-    llm_rewriter = GeminiLLM(
-        model_name=llm_rewriter_config['model_name'],
-        google_api_key=gemini_api_key,
-        model_params=llm_rewriter_params
-    )
-
-    # Initialize LLM for aggregation of rewritten report
-    llm_aggregator_config = evaluation_config['rewrite_config']['llm_aggregator_config']
-    llm_aggregator_params = llm_aggregator_config.get('model_params', {}).copy()
-    llm_aggregator = GeminiLLM(
-        model_name=llm_aggregator_config['model_name'],
-        google_api_key=gemini_api_key,
-        model_params=llm_aggregator_params
-    )
-
-    # ----- 3.3. Set LLM requests per minute limit -----
+    # ----- 3.2. Set LLM requests per minute limit -----
 
     # Get rate limits for all LLM usages
     claims_rpm = evaluation_config['accuracy_evaluation']['llm_claims_config'].get('max_requests_per_minute', 20)
@@ -254,6 +193,73 @@ def initialize_components(configs, gemini_api_key):
     
     # Get the rate limit checker function
     check_rate_limit = get_rate_limit_checker(safe_rpm)
+
+    # ----- 3.3. LLM configuration -----
+
+    # Initialize LLM for claims
+    llm_claims_config = evaluation_config['accuracy_evaluation']['llm_claims_config']
+    llm_claims_params = llm_claims_config.get('model_params', {}).copy()
+    llm_claims_params['response_schema'] = Claims  # Set the response schema for the LLM claims model
+    llm_claims = GeminiLLM(
+            model_name=llm_claims_config['model_name'],
+            google_api_key=gemini_api_key,
+            model_params=llm_claims_params,
+            rate_limit_checker=check_rate_limit
+        )
+    
+    # Initialize LLM for questions
+    llm_questions_config = evaluation_config['accuracy_evaluation']['llm_questions_config']
+    llm_questions_params = llm_questions_config.get('model_params', {}).copy()
+    llm_questions_params['response_schema'] = Questions  # Set the response schema for the LLM questions model
+    llm_questions = GeminiLLM(
+            model_name=llm_questions_config['model_name'],
+            google_api_key=gemini_api_key,
+            model_params=llm_questions_params,
+            rate_limit_checker=check_rate_limit
+        )
+
+    # Initialize LLM with GraphRAG configurations
+    llm_graphrag_config = evaluation_config['graphrag']['llm_config']
+    llm_graphrag_params = llm_graphrag_config.get('model_params', {}).copy()
+    llm_graphrag_params['response_schema'] = GraphRAGResultsBase  # Set the response schema for the LLM GraphRAG model (dictionary containing a question, its answer and the source)
+    llm_graphrag = GeminiLLM(
+        model_name=llm_graphrag_config['model_name'],
+        google_api_key=gemini_api_key,
+        model_params=llm_graphrag_params,
+        rate_limit_checker=check_rate_limit
+    )
+
+    # Initialize LLM for evaluation
+    llm_evaluator_config = evaluation_config['accuracy_evaluation']['llm_evaluator_config']
+    llm_evaluator_params = llm_evaluator_config.get('model_params', {}).copy()
+    llm_evaluator_params['response_schema'] = EvaluationResults  # Set the response schema for the LLM evaluation model
+    llm_evaluator = GeminiLLM(
+        model_name=llm_evaluator_config['model_name'],
+        google_api_key=gemini_api_key,
+        model_params=llm_evaluator_params,
+        rate_limit_checker=check_rate_limit
+    )
+
+    # Initialize LLM for rewriting
+    llm_rewriter_config = evaluation_config['rewrite_config']['llm_rewriter_config']
+    llm_rewriter_params = llm_rewriter_config.get('model_params', {}).copy()
+    llm_rewriter_params['response_schema'] = RewriteSectionResults  # Set the response schema for the LLM rewriter model
+    llm_rewriter = GeminiLLM(
+        model_name=llm_rewriter_config['model_name'],
+        google_api_key=gemini_api_key,
+        model_params=llm_rewriter_params,
+        rate_limit_checker=check_rate_limit
+    )
+
+    # Initialize LLM for aggregation of rewritten report
+    llm_aggregator_config = evaluation_config['rewrite_config']['llm_aggregator_config']
+    llm_aggregator_params = llm_aggregator_config.get('model_params', {}).copy()
+    llm_aggregator = GeminiLLM(
+        model_name=llm_aggregator_config['model_name'],
+        google_api_key=gemini_api_key,
+        model_params=llm_aggregator_params,
+        rate_limit_checker=check_rate_limit
+    )
 
     # ----- 3.4. Retrieval and GraphRAG configuration -----
 

@@ -110,7 +110,8 @@ class GraphRAGConstructionPipeline:
         llm = GeminiLLM(
             model_name=self.graphrag_config['llm_config']['model_name'],
             google_api_key=self.gemini_api_key,
-            model_params=self.graphrag_config['llm_config']['model_params']
+            model_params=self.graphrag_config['llm_config']['model_params'],
+            rate_limit_checker=self.check_rate_limit
         )
         
         # Create RAGTemplate using configuration files
