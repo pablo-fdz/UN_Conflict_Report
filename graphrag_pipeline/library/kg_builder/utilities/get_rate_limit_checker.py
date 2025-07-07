@@ -1,6 +1,6 @@
 import time
 
-def get_rate_limit_checker(max_requests_per_minute: int, max_tokens_per_minute: int):
+def get_rate_limit_checker(max_requests_per_minute: int, max_tokens_per_minute: int = 250000):
     """
     Returns a function that checks and enforces a rate limit. Example usage:
 
@@ -13,6 +13,7 @@ def get_rate_limit_checker(max_requests_per_minute: int, max_tokens_per_minute: 
 
     Args:
         max_requests_per_minute (int): The maximum number of requests allowed per minute.
+        max_tokens_per_minute (int): The maximum number of tokens allowed per minute. Default is 250,000.
 
     """
     request_count = 0
