@@ -79,10 +79,12 @@ class KGConstructionPipeline:
         
         # Get rate limit from config, default to 20
         rpm = self.build_config['llm_config'].get('max_requests_per_minute', 20)
+        tpm = self.build_config['llm_config'].get('max_tokens_per_minute', 250000)  # Default to 250k tokens
         # Subtract 20% for safety
         safe_rpm = round(rpm - rpm * 0.2)
-        print(f"Applying a global rate limit of LLM requests of {safe_rpm} requests per minute.")
-        self.check_rate_limit = get_rate_limit_checker(safe_rpm)
+        safe_tpm = round(tpm - tpm * 0.2)
+        print(f"Applying a global rate limit of LLM requests of {safe_rpm} requests per minute and {safe_tpm} tokens per minute.")
+        self.check_rate_limit = get_rate_limit_checker(safe_rpm, safe_tpm)
 
     def _create_resolver(self, driver: neo4j.Driver):
         """Create entity resolver based on configuration."""
@@ -141,7 +143,8 @@ class KGConstructionPipeline:
         llm = GeminiLLM(
             model_name=self.build_config['llm_config']['model_name'],
             google_api_key=self.gemini_api_key,
-            model_params=self.build_config['llm_config']['model_params']
+            model_params=self.build_config['llm_config']['model_params'],
+            rate_limit_checker=self.check_rate_limit
         )
         
         # Initialize embedder

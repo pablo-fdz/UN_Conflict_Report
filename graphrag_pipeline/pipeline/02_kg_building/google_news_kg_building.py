@@ -70,7 +70,7 @@ async def main():
     # Get the country for which to build the knowledge graph
     country = os.getenv('KG_BUILDING_COUNTRY')
     if not country:
-        raise ValueError("Country not specified. Set GRAPHRAG_KG_COUNTRY environment variable.")
+        raise ValueError("Country not specified. Set KG_BUILDING_COUNTRY environment variable.")
 
     # ==================== 1. Load data ====================
 
@@ -137,9 +137,44 @@ async def main():
                     df = df.head(sample_size)
                     print(f"Using sample of {len(df)} rows out of {original_size} total rows for testing")
 
+                # Debug: Check data types and ensure all columns are strings
+                print(f"DataFrame columns: {df.columns}")
+                print(f"DataFrame dtypes: {df.dtypes}")
+                
+                # Convert all metadata columns to strings to avoid WindowsPath issues
+                if 'decoded_url' in df.columns:
+                    df = df.with_columns(
+                        pl.col('decoded_url').map_elements(
+                            lambda x: str(x) if x is not None else None,
+                            return_dtype=pl.Utf8
+                        ).alias('decoded_url')
+                    )
+                
+                if 'source' in df.columns:
+                    df = df.with_columns(
+                        pl.col('source').map_elements(
+                            lambda x: str(x) if x is not None else None,
+                            return_dtype=pl.Utf8
+                        ).alias('source')
+                    )
+
                 # Convert date column to string format for metadata
                 if 'date' in df.columns and df['date'].dtype == pl.Date:
                     df = df.with_columns(pl.col('date').cast(pl.String))
+
+                # Ensure full_text column is UTF-8 string
+                if 'full_text' in df.columns:
+                    df = df.with_columns(pl.col('full_text').cast(pl.Utf8))
+
+                # Debug: Print sample data
+                print("Sample of metadata columns:")
+                if len(df) > 0:
+                    sample_row = df.head(1)
+                    for col in ['date', 'decoded_url', 'source']:
+                        if col in df.columns:
+                            value = sample_row[col].to_list()[0]
+                            print(f"  {col}: {value} (type: {type(value)})")
+
 
                 # ==================== 2. Run KG pipeline for the current file ====================
                 

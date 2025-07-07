@@ -86,7 +86,7 @@ class GraphRAGConstructionPipeline:
         # Subtract 20% for safety
         safe_rpm = round(rpm - rpm * 0.2)
         print(f"Applying a global rate limit of LLM requests of {safe_rpm} requests per minute.")
-        self.check_rate_limit = get_rate_limit_checker(safe_rpm)
+        self.check_rate_limit = get_rate_limit_checker(safe_rpm, 250000)
 
     def _get_indexes(self, driver: neo4j.Driver):
         """Get the vector and fulltext indexes in the database."""

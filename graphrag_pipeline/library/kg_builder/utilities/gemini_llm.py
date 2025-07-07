@@ -81,6 +81,7 @@ class GeminiLLM(LLMInterface):
         google_api_key: str,
         model_params: Optional[dict[str, Any]] = None,
         default_system_instruction: Optional[str] = None,
+        rate_limit_checker: Optional[callable] = None,
     ):
         """
         Initializes the Gemini LLM client.
@@ -94,6 +95,8 @@ class GeminiLLM(LLMInterface):
             default_system_instruction (Optional[str]): A default system-level instruction to
                 guide the model's behavior. This can be overridden on a per-call basis.
                 Defaults to None.
+            rate_limit_checker (Optional[callable]): A function to check and enforce rate limits.
+                Should accept tokens_used as a parameter. Defaults to None.
         """
         # Initialize the parent class with model_name and model_params
         super().__init__(model_name=model_name, model_params=model_params or {})
@@ -104,6 +107,26 @@ class GeminiLLM(LLMInterface):
 
         # Store the default system instruction for reuse.
         self.default_system_instruction = default_system_instruction
+        
+        # Store the rate limit checker
+        self.rate_limit_checker = rate_limit_checker
+
+    def _estimate_tokens(self, text: str) -> int:
+        """
+        Estimate the number of tokens in a text string.
+        This is a rough approximation since we don't have direct access to Gemini's tokenizer.
+        
+        Args:
+            text (str): The input text to estimate tokens for.
+            
+        Returns:
+            int: Estimated number of tokens.
+        """
+        # Rough estimation: 1 token ≈ 0.75 words for most models
+        # For safety, we use a slightly higher estimate
+        word_count = len(text.split())
+        estimated_tokens = int(word_count * 1.3)  # Conservative estimate
+        return max(estimated_tokens, 10)  # Minimum 10 tokens per request
 
     def _get_messages(
         self,
@@ -176,6 +199,22 @@ class GeminiLLM(LLMInterface):
         Raises:
             LLMGenerationError: If an error occurs during the API call.
         """
+        # Estimate tokens for rate limiting
+        estimated_tokens = self._estimate_tokens(input)
+        if message_history:
+            # Add tokens for message history
+            history = (
+                message_history.messages
+                if isinstance(message_history, MessageHistory)
+                else message_history
+            )
+            for msg in history:
+                estimated_tokens += self._estimate_tokens(msg.content)
+        
+        # Check rate limits before making the API call
+        if self.rate_limit_checker:
+            self.rate_limit_checker(tokens_used=estimated_tokens)
+        
         # Prepare the generation configuration.
         config_params = self.model_params.copy()
         current_system_instruction = system_instruction or self.default_system_instruction
@@ -236,6 +275,22 @@ class GeminiLLM(LLMInterface):
         Raises:
             LLMGenerationError: If an error occurs during the API call.
         """
+        # Estimate tokens for rate limiting
+        estimated_tokens = self._estimate_tokens(input)
+        if message_history:
+            # Add tokens for message history
+            history = (
+                message_history.messages
+                if isinstance(message_history, MessageHistory)
+                else message_history
+            )
+            for msg in history:
+                estimated_tokens += self._estimate_tokens(msg.content)
+        
+        # Check rate limits before making the API call
+        if self.rate_limit_checker:
+            self.rate_limit_checker(tokens_used=estimated_tokens)
+        
         # Prepare the generation configuration.
         config_params = self.model_params.copy()
         current_system_instruction = system_instruction or self.default_system_instruction
