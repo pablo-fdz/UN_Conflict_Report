@@ -341,17 +341,18 @@ class Application:
                                 self.logger.info(f"Successfully executed script for {retriever}")
 
                                 # --- record which file just got written ---
-                                base = self.output_directory or os.path.join(self.graphrag_pipeline_dir.parent, 'reports')
+                                base_path = Path(self.output_directory or self.graphrag_pipeline_dir.parent / 'reports')
                                 # look both in base/country (default) and base (in case scripts wrote directly there)
-                                search_dirs = [os.path.join(base, country), base]
+                                search_dirs = [base_path / country, base_path]
                                 retr_short = retriever.replace('Retriever', '')
                                 candidates = []
                                 for d in search_dirs:
-                                    pattern = os.path.join(d, f"security_report_{safe_country}_{retr_short}_*.md")
-                                    candidates.extend(glob.glob(pattern))
+                                    if d.is_dir():
+                                        pattern = f"security_report_{safe_country}_{retr_short}_*.md"
+                                        candidates.extend(d.glob(pattern))
                                 if candidates:
-                                    latest = max(candidates)
-                                    self.generated_reports.append(latest)
+                                    latest = max(candidates, key=lambda p: p.stat().st_mtime)
+                                    self.generated_reports.append(str(latest))
                                     self.logger.info(f"Recorded generated report: {latest}")
                                 else:
                                     self.logger.warning(f"No report found for pattern '{retr_short}' in {search_dirs}")
