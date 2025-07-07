@@ -1,6 +1,6 @@
 {
   "google_news": {
-    "ingestion": false,
+    "ingestion": true,
     "include_in_kg": true,
     "ingestion_date_range": "1 week",
     "kg_inclusion_date_range": "1 week",
@@ -13,7 +13,7 @@
     "kg_inclusion_date_range": "3 months",
     "sample_size": "100"
   },
-  "acled": {
+  "acled": { 
     "ingestion": true,
     "include_in_kg": true,
     "ingestion_date_range": "3 months",
