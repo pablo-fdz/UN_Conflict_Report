@@ -435,32 +435,6 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                 # Remove the section from the content to be evaluated
                 original_report_content = original_report_content.replace(acled_match.group(1), "")
 
-            # --- Logic to get forecast data that was originally passed to the LLM in the metadata section ---
-
-            forecast_data = None
-            hotspot_regions = None
-            try:                
-                # Capture the forecast data path from the original report content
-                forecast_path_match = re.search(r"\*\*Forecast data path:\*\* (.*\.json)", metadata_section_content)
-                if forecast_path_match:
-                    forecast_filename = forecast_path_match.group(1).strip()  # Get the filename from the match
-                    # The assets folder (where forecast data is located) is in 
-                    # the same directory as the original report
-                    assets_dir = Path(report_path).parent / 'assets'
-                    forecast_filepath = assets_dir / forecast_filename
-                    if forecast_filepath.is_file():
-                        with open(forecast_filepath, 'r', encoding='utf-8') as f:
-                            forecast_data = json.load(f)
-                        print(f"Loaded forecast data from: {forecast_filepath}")
-                        # Extract hotspot regions if available, within ACLED cast analysis
-                        if forecast_data['acled_cast_analysis']:
-                            acled_cast_analysis = forecast_data['acled_cast_analysis']
-                            hotspot_regions = acled_cast_analysis.get('hotspot_regions', None)
-                    else:
-                        print(f"Warning: Forecast file not found at {forecast_filepath}")
-            except Exception as e:
-                print(f"Warning: Could not load forecast data. Error: {e}")
-
             # --- Process the report content to extract sections for evaluation ---
 
             # Extract each section (heading 2) as different dictionary entries
@@ -641,7 +615,6 @@ async def main(country: str = None, reports_output_directory: str = None, accura
                                 questions_and_answers=claim_data["questions"],  # Here we will pass the dictionary with all of the questions and the corresponding answers and sources associated with a claim
                                 base_eval_prompt=base_eval_prompt_template,
                                 previously_true_claims=true_claims_str,
-                                hotspot_regions_data=hotspot_regions,  # Pass hotspot regions data if available as context for the hotspot data
                                 structured_output=True
                             )
                             llm_usage += 1  # Increment LLM usage for each claim evaluation
