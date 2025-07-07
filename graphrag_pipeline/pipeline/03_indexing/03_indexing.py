@@ -7,8 +7,8 @@ from pathlib import Path
 # modules in parent directory)
 script_dir = Path(__file__).parent  # Get the directory where this script is located
 graphrag_pipeline_dir = script_dir.parent.parent  # Get the graphrag_pipeline directory
-if graphrag_pipeline_dir not in sys.path:
-    sys.path.append(graphrag_pipeline_dir)
+if str(graphrag_pipeline_dir) not in sys.path:
+    sys.path.append(str(graphrag_pipeline_dir))
 
 import asyncio
 from dotenv import load_dotenv
