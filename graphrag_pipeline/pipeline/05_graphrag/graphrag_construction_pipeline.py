@@ -493,7 +493,7 @@ class GraphRAGConstructionPipeline:
                 flags=re.DOTALL  # Use DOTALL to match across newlines
             )
         else:
-            print("Warning: No Conflict Forecast time series plot and/or armed conflict risk predictions found. The section will not be included in the report.")
+            print("Warning: No ConflictForecast time series plot and/or armed conflict risk predictions found. The section will not be included in the report.")
 
         # --- Create and inject the "ACLED" section ---
         if bar_chart_path and forecast_data.get('acled_cast_analysis'):
@@ -505,7 +505,7 @@ class GraphRAGConstructionPipeline:
             # Create the structured text for this section
             acled_forecast_text = [
                 "",  # Initialize with a newline for spacing
-                "#### Predicted Increase in Violent Events in the Short Term (ACLED)",
+                "#### Predicted Increase in Violent Events in the Next Month (ACLED)",
                 ""
             ]
 
