@@ -83,7 +83,12 @@ def process_data(results, country):
         "item_id",
         pl.col("event_date").str.to_datetime().dt.date().alias("date"),
         pl.col("notes").alias("text"),
-        pl.col("source").alias("domain"),
+        # Modified domain column to append ACLED reporting information
+        pl.concat_str([
+            pl.col("source"),
+            pl.lit(", recorded by ACLED on "),
+            pl.col("event_date").str.to_datetime().dt.strftime("%d %B %Y")
+        ]).alias("domain"),
         "event_type", "sub_event_type", "actor1", "assoc_actor_1", "actor2", "assoc_actor_2", "interaction",
         "country",
         pl.col("admin1").alias("state"),
