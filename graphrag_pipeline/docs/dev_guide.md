@@ -160,10 +160,10 @@ flowchart LR
  subgraph s1["<b>Neo4j<b></b></b>"]
         A["Knowledge Graph"]
   end
- subgraph s2["Google Gemini"]
+ subgraph s2["<b>Google Gemini<b></b></b>"]
         n7["LLM"]
   end
- subgraph s3["Context"]
+ subgraph s3["<b>Context<b></b></b>"]
     direction LR
         n12["Vector embedding"]
         n13["Text"]
@@ -178,17 +178,19 @@ flowchart LR
     n5 --> n7
     n7 --> n8["Report"]
     n10["Examples"] -.-> n5
-    n11["ACLED CAST and 
-    ConflictForecast"] --> n5
+    n11["ACLED CAST"] --> n5
     n12 --> n14
     n13 --> n14
     s3 --> n5
     s1 <--> n1
+    n16["ACLED CAST and 
+    ConflictForecast"] --> n8
     n13@{ shape: rect}
     n2@{ shape: rect}
     n6@{ shape: rect}
     n10@{ shape: rect}
     n11@{ shape: rect}
+    n16@{ shape: rect}
 ```
 
 -   **Process**: This is the final step where the system answers a user's query. It uses a retriever to fetch relevant context from the KG, which is then passed to an LLM to generate a coherent, evidence-based answer.
