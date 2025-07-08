@@ -1,0 +1,51 @@
+{
+  "country": "India",
+  "analysis_date": "2025-07-08-09-07-20",
+  "data_sources": {
+    "acled_cast": true,
+    "conflict_forecast": true
+  },
+  "conflict_forecast_prediction": 0.0654337699195175,
+  "acled_cast_analysis": {
+    "forecast_horizon_months": 2,
+    "total_hotspots": 6,
+    "hotspot_regions": [
+      {
+        "name": "Mizoram",
+        "avg1": 1.0,
+        "total_forecast": 2.0,
+        "percent_increase1": 100.0
+      },
+      {
+        "name": "Telangana",
+        "avg1": 1.0,
+        "total_forecast": 2.0,
+        "percent_increase1": 100.0
+      },
+      {
+        "name": "Maharashtra",
+        "avg1": 2.0,
+        "total_forecast": 3.0,
+        "percent_increase1": 50.0
+      },
+      {
+        "name": "Odisha",
+        "avg1": 2.0,
+        "total_forecast": 3.0,
+        "percent_increase1": 50.0
+      },
+      {
+        "name": "Andhra Pradesh",
+        "avg1": 1.0,
+        "total_forecast": 2.0,
+        "percent_increase1": 100.0
+      },
+      {
+        "name": "Manipur",
+        "avg1": 5.0,
+        "total_forecast": 7.0,
+        "percent_increase1": 40.0
+      }
+    ]
+  }
+}
