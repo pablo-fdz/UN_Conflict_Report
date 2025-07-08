@@ -90,8 +90,8 @@ def main():
     Main function to process a specific report file and create hyperlinked version.
     """
     # Input and output file paths
-    input_file = r"reports\Sudan\corrected_reports\corrected_security_report_Sudan_HybridCypher_20250707_1202.md"
-    output_file = "report_with_citations.md"
+    input_file = r"C:\Users\matia\OneDrive\Escritorio\Nastia_BSE\Master_Thesis\UN_Conflict_Report\reports\Sudan\corrected_reports\corrected_security_report_Sudan_HybridCypher_20250707_2351.md"
+    output_file = "C:\Users\matia\OneDrive\Escritorio\Nastia_BSE\Master_Thesis\UN_Conflict_Report\reports\Sudan\corrected_reports\hyper_corrected_security_report_Sudan_HybridCypher_20250707_2351.md"
     
     try:
         # Read the input file
