@@ -372,12 +372,6 @@
             "spacy_model": "en_core_web_lg",
             "similarity_threshold": 0.99
         },
-        "TFIDFMatchResolver_config": {
-            "filter_query": "MATCH (n) WHERE NOT 'Document' IN labels(n) AND NOT 'Chunk' IN labels(n) RETURN n",
-            "resolve_properties": ["name", "description"],
-            "similarity_threshold": 0.85,
-            "neo4j_database": "neo4j"
-        },
         "ex_post_resolver": "SinglePropertyExactMatchResolver"
     },
     "dev_settings": {
