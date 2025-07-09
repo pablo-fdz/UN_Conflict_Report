@@ -33,6 +33,28 @@ Configuration for the ACLED data source (structured, high-quality data but with 
 
 *Recommended value*: if Neo4j storage constraints are not an issue, set to `true` to improve the richness of the knowledge graph.
 
+#### *ingestion_date_range*
+
+Date range for which to ingest data from the source. Compatible time units are `days`, `weeks`, `months` or `years`. The date range will be then determined dynamically based on this setting.
+
+*Recommended value*: ACLED data ingestion is very fast, so setting a long time period (e.g., of years) is perfectly feasible. For testing, consider setting it to `"3 months"`.
+
+#### *kg_inclusion_date_range*
+
+Date range for which to populate the knowledge graph from ACLED using the ingested data. Compatible time units are `days`, `weeks`, `months` or `years`. The date range will be then determined dynamically based on this setting.
+
+*Recommended value*: if you want to populate the knowledge graph with all of the ingested data, set this parameter to the same value as *ingestion_date_range*.
+
+#### *sample_size*
+
+Number of rows that will be randomly sampled from the ingested data for each of the countries for which the user prompts the building of the knowledge graph. Accepted values are:
+- A string containing an integer.
+- `"all"`, in which case all of the ingested data for ACLED will be used to populate the knowledge graph for the prompted countries.
+
+For example, if the user prompts the knowledge graph building for `"Sudan" "India"`, for each of the parquet files available for those countries (i.e., data that has been previously ingested) data will be randomly sampled and used to populate the knowledge graph.
+
+*Recommended value*: set to an integer for testing/debugging issues (e.g., `100`), set to `all` to obtain the richest results possible.
+
 ### factal
 
 Configuration for the Factal data source (high-quality event compilation, but with limited perspectives).
@@ -45,6 +67,18 @@ Same as for ACLED data source.
 
 Same as for ACLED data source.
 
+#### *ingestion_date_range*
+
+Same functionality as for ACLED data source.
+
+#### *kg_inclusion_date_range*
+
+Same functionality as for ACLED data source.
+
+#### *sample_size*
+
+Same functionality as for ACLED data source.
+
 ### google_news
 
 Configuration for the Google News data source (highly unstructured data, potentially less trustworthy, but rich in diversity).
@@ -56,6 +90,22 @@ Same as for ACLED data source.
 #### *include_in_kg* 
 
 Same as for ACLED data source.
+
+#### *ingestion_date_range*
+
+Same functionality as for ACLED data source.
+
+*Recommended value*: data ingestion for Google News is significantly slower than for ACLED or Factal (since first URLs need to be decoded and then the articles need to be scraped). For testing purposes, consider setting this parameter to a relatively low value (e.g., `"1 week"`).
+
+#### *kg_inclusion_date_range*
+
+Same functionality as for ACLED data source.
+
+#### *sample_size*
+
+Same functionality as for ACLED data source.
+
+*Recommended value*: for testing purposes, consider setting this parameter to a lower value than Factal or ACLED, since parquet files for Google News data are partitioned (and data is sampled for *each* of the available parquet files for a certain country).
 
 ### Most Impactful Parameters
 
@@ -78,7 +128,7 @@ The maximum number of characters (*not* tokens - tokens can be assimilated to a 
 - Smaller chunks require doing more LLM requests (which could increase the bill if pricing is based on the number of requests) and more focused but may lose important context that spans across chunks. 
 - Consider also the embedder and LLM (for NER) context window for setting this parameter (common embedders have between 256 to 512 tokens of context window, while modern LLMs have more than 1M tokens of context window). The number of characters of regular news articles can span between 5,000-20,000 characters.
 
-*Recommended value*: set a value high enough so that the whole input text can be included in a text chunk (e.g., 1M characters). Since input texts are relatively short (at most, long news articles), positional bias is not really an issue here, and embeddings can capture most of the meaning of an article with just the first few hundred tokens. If you want to split articles into more than one chunk, set a relatively low value (at most 5,000 characters).
+*Recommended value*: set a relatively low value (e.g., `2500`) to split long news articles into different text chunks, in order to avoid retrieving irrelevant context when doing GraphRAG. Otherwise, set a value high enough so that the whole input text can be included in a text chunk (e.g., 1M characters). Since input texts are relatively short (at most, long news articles), positional bias is not really an issue here, and embeddings can capture most of the meaning of an article with just the first few hundred tokens.
 
 #### *chunk_overlap*
 
@@ -148,6 +198,12 @@ Rate limit to avoid exceeding API quotas.
 *Recommended value*: set to the real rate limit for the corresponding model (check this [link](https://ai.google.dev/gemini-api/docs/rate-limits#current-rate-limits) for the Google Gemini rate limits), as the code already implements some safety checks to avoid exceeding the maximum requests per minute and includes retry logic when requests fail.
 
 > Check the usage of Gemini models in [Google AI Studio](https://aistudio.google.com/usage) if generation fails.
+
+#### *max_tokens_per_minute*
+
+Tokens per minute rate limit to avoid exceeding API quotas.
+
+*Recommended value*: set to the real rate limit for the corresponding model (check this [link](https://ai.google.dev/gemini-api/docs/rate-limits#current-rate-limits).
 
 ### schema_config
 
@@ -234,18 +290,23 @@ Possible property types are: `BOOLEAN`, `DATE`, `DURATION`, `FLOAT`, `INTEGER`, 
         {"name": "name", "type": "STRING"}
     ]},
 
-    {"label": "ADM1", 
+    {"label": "State", 
     "description": "First-level administrative division within countries, like US states (e.g., California), provinces in Iran (e.g., Semnan) or regions in Ghana (e.g., Ashanti).",
     "properties": [
         {"name": "name", "type": "STRING"}
     ]},
 
+    {"label": "Town", 
+    "description": "Second-level administrative division within countries, like US states (e.g., California), provinces in Iran (e.g., Semnan) or regions in Ghana (e.g., Ashanti).",
+    "properties": [
+        {"name": "name", "type": "STRING"}
+    ]},
+
     {"label": "Location",
-    "description": "Particular geographical location of higher granularity than national (country) or first-level administrative divisions (ADM1), such as cities, towns, or specific sites (e.g., streets, buildings, squares, etc.)..",
+    "description": "Particular geographical location of higher granularity than national (country) or first-level administrative divisions (State), such as cities, towns, or specific sites (e.g., streets, buildings, squares, etc.)..",
     "properties": [
         {"name": "name", "type": "STRING"}
     ]}
-    
 ],
 "edges": [
     {"label": "HAPPENED_IN", 
@@ -290,54 +351,55 @@ Possible property types are: `BOOLEAN`, `DATE`, `DURATION`, `FLOAT`, `INTEGER`, 
 "triplets": [
 
     ["Event", "HAPPENED_IN", "Location"],
-    ["Event", "HAPPENED_IN", "ADM1"],
+    ["Event", "HAPPENED_IN", "Town"],
+    ["Event", "HAPPENED_IN", "State"],
     ["Event", "HAPPENED_IN", "Country"],
 
     ["Actor", "CONFRONTED_WITH", "Actor"],
     ["Actor", "CONFRONTED_WITH", "Country"],
-    ["Actor", "CONFRONTED_WITH", "ADM1"],
+    ["Actor", "CONFRONTED_WITH", "State"],
     ["Actor", "CONFRONTED_WITH", "Location"],
     ["Country", "CONFRONTED_WITH", "Actor"],
     ["Country", "CONFRONTED_WITH", "Country"],
-    ["Country", "CONFRONTED_WITH", "ADM1"],
+    ["Country", "CONFRONTED_WITH", "State"],
     ["Country", "CONFRONTED_WITH", "Location"],
-    ["ADM1", "CONFRONTED_WITH", "Actor"],
-    ["ADM1", "CONFRONTED_WITH", "Country"],
-    ["ADM1", "CONFRONTED_WITH", "ADM1"],
-    ["ADM1", "CONFRONTED_WITH", "Location"],
+    ["State", "CONFRONTED_WITH", "Actor"],
+    ["State", "CONFRONTED_WITH", "Country"],
+    ["State", "CONFRONTED_WITH", "State"],
+    ["State", "CONFRONTED_WITH", "Location"],
     ["Location", "CONFRONTED_WITH", "Actor"],
     ["Location", "CONFRONTED_WITH", "Country"],
-    ["Location", "CONFRONTED_WITH", "ADM1"],
+    ["Location", "CONFRONTED_WITH", "State"],
     ["Location", "CONFRONTED_WITH", "Location"],
 
     ["Actor", "COOPERATED_WITH", "Actor"],
     ["Actor", "COOPERATED_WITH", "Country"],
-    ["Actor", "COOPERATED_WITH", "ADM1"],
+    ["Actor", "COOPERATED_WITH", "State"],
     ["Actor", "COOPERATED_WITH", "Location"],
     ["Country", "COOPERATED_WITH", "Actor"],
     ["Country", "COOPERATED_WITH", "Country"],
-    ["Country", "COOPERATED_WITH", "ADM1"],
+    ["Country", "COOPERATED_WITH", "State"],
     ["Country", "COOPERATED_WITH", "Location"],
-    ["ADM1", "COOPERATED_WITH", "Actor"],
-    ["ADM1", "COOPERATED_WITH", "Country"],
-    ["ADM1", "COOPERATED_WITH", "ADM1"],
-    ["ADM1", "COOPERATED_WITH", "Location"],
+    ["State", "COOPERATED_WITH", "Actor"],
+    ["State", "COOPERATED_WITH", "Country"],
+    ["State", "COOPERATED_WITH", "State"],
+    ["State", "COOPERATED_WITH", "Location"],
     ["Location", "COOPERATED_WITH", "Actor"],
     ["Location", "COOPERATED_WITH", "Country"],
-    ["Location", "COOPERATED_WITH", "ADM1"],
+    ["Location", "COOPERATED_WITH", "State"],
     ["Location", "COOPERATED_WITH", "Location"],
     
     ["Actor", "PARTICIPATED_IN", "Event"],
     ["Country", "PARTICIPATED_IN", "Event"],
-    ["ADM1", "PARTICIPATED_IN", "Event"],
+    ["State", "PARTICIPATED_IN", "Event"],
 
     ["Actor", "IS_FROM", "Country"],
-    ["Actor", "IS_FROM", "ADM1"],
+    ["Actor", "IS_FROM", "State"],
     ["Actor", "IS_FROM", "Location"],
 
-    ["ADM1", "IS_WITHIN", "Country"],
+    ["State", "IS_WITHIN", "Country"],
     ["Location", "IS_WITHIN", "Country"],
-    ["Location", "IS_WITHIN", "ADM1"],
+    ["Location", "IS_WITHIN", "State"],
     ["Location", "IS_WITHIN", "Location"]
 ]
 ```
@@ -363,7 +425,7 @@ If `true`, it uses the default prompt from the `neo4j-graphrag` library. If `fal
 A custom prompt template. This gives you fine-grained control over the LLM's extraction behavior.
 
 *Suggested template*:
-```
+```json
 "You are a top-tier algorithm designed for extracting information in structured formats to build a knowledge graph that will be used for creating security reports for different countries.\n\nExtract the entities (nodes) and specify their type from the following Input text.\nAlso extract the relationships between these nodes. The relationship direction goes from the start node to the end node.\n\nReturn result as JSON using the following format:\n{{\"nodes\": [ {{\"id\": \"0\", \"label\": \"the type of entity\", \"properties\": {{\"name\": \"name of entity\" }} }}],\n\"relationships\": [{{\"type\": \"TYPE_OF_RELATIONSHIP\", \"start_node_id\": \"0\", \"end_node_id\": \"1\", \"properties\": {{\"details\": \"Description of the relationship\"}} }}] }}\n\n- Use only the information from the Input text. Do not add any additional information.\n- If the input text is empty, return empty Json.\n- Make sure to create as many nodes and relationships as needed to offer rich context for generating a security-related knowledge graph.\n- An AI knowledge assistant must be able to read this graph and immediately understand the context to inform detailed research questions.\n- Multiple documents will be ingested from different sources and we are using this property graph to connect information, so make sure entity types are fairly general.\n- Do not create edges between nodes and chunks when the relationship is not clear enough.\n\nUse only the following nodes and relationships (if provided):\n{schema}\n\nAssign a unique ID (string) to each node, and reuse it to define relationships.\nDo respect the source and target node types for relationship and the relationship direction.\n\nDo not return any additional information other than the JSON in it.\n\nExamples:\n{examples}\n\nInput text:\n{text}"
 ```
 
@@ -385,26 +447,189 @@ Examples that will be passed to the LLM (as strings) as a model for extracting e
 ```json
 "examples": [
     {
-        "input_text": "Text: On January 1, 2023, a significant conflict erupted in the Middle East involving multiple countries and organizations. The conflict, named 'Middle East Conflict 2023', lasted until March 15, 2023. Key actors included the 'Middle East Coalition' and the 'Opposing Forces'. The conflict resulted in a high level of destruction and instability in the region.",
+        "input_text": "Country: Sudan. State: South Darfur. Town: Rehaid Albirdi. Text: On 31 May 2025, RSF abducted 20 civilians across two days, including Barno Native Administration leader (Mayor), in Rahad El Berdi (Rehaid Albirdi, South Darfur), accusing them of collaborating with SAF. Number of fatalities: 0. Opposing sides: Rebel group-Civilians. Actor 1: Rapid Support Forces. Actor 2: Civilians (Sudan) (associated with: Barno Ethnic Group (Sudan)). Type of event: Violence against civilians (Abduction/forced disappearance).",
         "schema": {
             "nodes": [
-                {"id": "0", "label": "Event", "properties": {"name": "Middle East Conflict 2023", "date": "2023-01-01", "end_date": "2023-03-15", "type": "Conflict", "severity": 5, "description": "A significant conflict in the Middle East."}},
-                {"id": "1", "label": "Actor", "properties": {"name": "Middle East Coalition", "type": "Organization"}},
-                {"id": "2", "label": "Actor", "properties": {"name": "Opposing Forces", "type": "Organization"}},
-                {"id": "3", "label": "Region", "properties": {"name": "Middle East", "stability": 0.2}}
-            ],
-            "relationships": [
-                {"type": "OCCURRED_IN", "start_node_id": "0", "end_node_id": "3", "properties": {"start_date": null, "end_date": null, "certainty": 1.0}},
-                {"type": "PARTICIPATED_IN", "start_node_id": "1", "end_node_id": "0", "properties": {"role": null, "significance": 1.0, "start_date": null, "end_date": null}},
-                {"type": "PARTICIPATED_IN", "start_node_id": "2", "end_node_id": "0", "properties": {"role": null, "significance": 1.0, "start_date": null, "end_date": null}}
-            ]
-        }
+                {
+                    "id": "0",
+                    "label": "Event",
+                    "properties": {
+                        "name": "Abduction of Civilians in Rehaid Albirdi",
+                        "date": "2025-05-31",
+                        "end_date": "2025-06-01",
+                        "type": "Violence against civilians (Abduction/forced disappearance)",
+                        "severity": 3,
+                        "description": "RSF abducted 20 civilians, including the Barno Native Administration leader, in Rehaid Albirdi, South Darfur."
+                    }
+                },
+                {
+                    "id": "1",
+                    "label": "Actor",
+                    "properties": {
+                        "name": "Rapid Support Forces",
+                        "type": "Rebel group"
+                    }
+                },
+                {
+                    "id": "2",
+                    "label": "Actor",
+                    "properties": {
+                        "name": "Civilians (Sudan)",
+                        "type": "Civilian group",
+                        "associated_with": "Barno Ethnic Group (Sudan)"
+                    }
+                },
+                {
+                    "id": "3",
+                    "label": "Region",
+                    "properties": {
+                        "name": "Rehaid Albirdi, South Darfur, Sudan",
+                        "stability": 0.3
+                    }
+                }
+                ],
+                "relationships": [
+                    {
+                        "type": "OCCURRED_IN",
+                        "start_node_id": "0",
+                        "end_node_id": "3",
+                        "properties": {
+                            "start_date": null,
+                            "end_date": null,
+                            "certainty": 1.0
+                        }
+                    },
+                    {
+                        "type": "PARTICIPATED_IN",
+                        "start_node_id": "1",
+                        "end_node_id": "0",
+                        "properties": {
+                            "role": "Perpetrator",
+                            "significance": 1.0,
+                            "start_date": null,
+                            "end_date": null
+                        }
+                    },
+                    {
+                        "type": "PARTICIPATED_IN",
+                        "start_node_id": "2",
+                        "end_node_id": "0",
+                        "properties": {
+                            "role": "Victim",
+                            "significance": 1.0,
+                            "start_date": null,
+                            "end_date": null
+                        }
+                    }
+                ]
+            }
     },
     {
-        "input_text": "Text: On February 14, 2023, ...",
+        "input_text": "State, country: North Kurdufan, Sudan. Text: Multiple people injured in reported RSF drone strike in er-Rahad in Sudan's North Kurdufan state, sources tell Al Jazeera. Severity (from 1 to 4): 3. Theme: war & conflict. Tag: N/A. Topics: Sudan civil war, war & conflict, Er Rahad, Sudan, North Kurdufan, Sudan, Northern Africa, Sudan, Africa, MENA, EMEA",
         "schema": {
             "nodes": [
-                {"id": "0", "label": "Event", "properties": {"name": "February 14 Incident", "date": "2023-02-14", "end_date": null, "type": "Attack", "severity": 4, "description": "An attack occurred on February 14."}}
+                {
+                    "id": "0",
+                    "label": "Event",
+                    "properties": {
+                        "name": "RSF Drone Strike in Er Rahad",
+                        "date": null,
+                        "end_date": null,
+                        "type": "Airstrike",
+                        "severity": 3,
+                        "description": "Multiple people injured in a reported RSF drone strike in Er Rahad, North Kurdufan, Sudan."
+                    }
+                },
+                {
+                    "id": "1",
+                    "label": "Actor",
+                    "properties": {
+                        "name": "Rapid Support Forces",
+                        "type": "Rebel group"
+                    }
+                },
+                {
+                    "id": "2",
+                    "label": "Actor",
+                    "properties": {
+                        "name": "Civilians (Sudan)",
+                        "type": "Civilian group"
+                    }
+                },
+                {
+                    "id": "3",
+                    "label": "Town",
+                    "properties": {
+                        "name": "Er Rahad"
+                    }
+                },
+                {
+                    "id": "4",
+                    "label": "State",
+                    "properties": {
+                        "name": "North Kordofan"
+                    }
+                },
+                {
+                    "id": "5",
+                    "label": "Country",
+                    "properties": {
+                        "name": "Sudan"
+                    }
+                },
+                {
+                    "id": "6",
+                    "label": "Location",
+                    "properties": {
+                        "name": "Er Rahad, North Kurdufan, Sudan"
+                    }
+                }
+            ],
+            "relationships": [
+                {
+                    "type": "LOCATED_IN",
+                    "start_node_id": "3",
+                    "end_node_id": "4",
+                    "properties": {}
+                },
+                {
+                    "type": "LOCATED_IN",
+                    "start_node_id": "4",
+                    "end_node_id": "5",
+                    "properties": {}
+                },
+                {
+                    "type": "LOCATED_IN",
+                    "start_node_id": "6",
+                    "end_node_id": "4",
+                    "properties": {}
+                },
+                {
+                    "type": "OCCURRED_IN",
+                    "start_node_id": "0",
+                    "end_node_id": "6",
+                    "properties": {
+                        "certainty": 0.9
+                    }
+                },
+                {
+                    "type": "PARTICIPATED_IN",
+                    "start_node_id": "1",
+                    "end_node_id": "0",
+                    "properties": {
+                        "role": "Perpetrator",
+                        "significance": 1.0
+                    }
+                },
+                {
+                    "type": "PARTICIPATED_IN",
+                    "start_node_id": "2",
+                    "end_node_id": "0",
+                    "properties": {
+                        "role": "Victim",
+                        "significance": 1.0
+                    }
+                }
             ]
         }
     }
@@ -459,7 +684,7 @@ Similarity-based resolver that resolves entities with the same label and similar
 *Recommended values*:
 - `filter_query`: if feasible due to the KG size, set to `null`. Alternative: `"WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}"` to merge entities coming from the same document.
 - `resolve_properties`: `["name"]` (merge nodes only based on its name).
-- `similarity_threshold`: 0.95 (high value to reduce false positives, which are frequent).
+- `similarity_threshold`: 0.9 (high value to reduce false positives, which are frequent).
 
 #### *SpaCySemanticMatchResolver_config*
 
@@ -475,7 +700,7 @@ A semantic match resolver, which is based on spaCy embeddings and cosine similar
 - `filter_query`: if feasible due to the KG size, set to `null`. Alternative: `"WHERE (entity)-[:FROM_CHUNK]->(:Chunk)-[:FROM_DOCUMENT]->(doc:Document {id = 'docId'}"` to merge entities coming from the same document.
 - `spacy_model`: set to `en_core_web_lg` (largest, best model - the bottleneck here is not the resolver performance).
 - `resolve_properties`: `["name"]` (merge nodes only based on its name).
-- `similarity_threshold`: 0.95 (high value to reduce false positives, which are frequent).
+- `similarity_threshold`: 0.99 (high value to reduce false positives, which are frequent).
 
 > Consider the language of the input documents for choosing the resolver method. SpaCy also has [multilingual embedding models](https://spacy.io/models/xx). In case of doubt, choose the most conservative option, `SinglePropertyExactMatchResolver`.
 
@@ -491,7 +716,7 @@ Settings for development and debugging.
 
 If `true`, the pipeline will run with a small, predefined sample of data, which is useful for quick tests.
 
-*Recommended value*: set to `true` if working to improve the pipeline, set to `false` for production.
+*Recommended value*: set to `true` if working to improve the pipeline, set to `false` for production or whenever more extensive data is available.
 
 #### *on_error*
 
@@ -544,10 +769,10 @@ List of properties of the text chunk nodes to return from the vector search resu
 Parameters that configure the context retrieval from the knowledge graph. For vector-based methods, this only includes `top_k` (integer), which denotes the top *k* properties and similarity scores to return (e.g., if set to 5, it will return the top 5 chunks with the highest cosine similarity between the search query and each of the text chunks in the knowledge graph).
 
 *Trade-offs*:
-- Setting a high `top_k` will retrieve more context, at the cost of more potential noise.
+- Setting a high `top_k` will retrieve more context, at the cost of more potential noise. Consider that, at this step, the search query is relatively generic, so it may be more interesting to extract more information for the initial report generation (which will later be cleaned, if desired, through the refined report produced by running the accuracy evaluation).
 - Setting a low `top_k` may miss relevant context to generate the report.
 
-*Recommended value*: set to a relatively high value, such as 20.
+*Recommended value*: set to a relatively high value, such as `20`.  
 
 ### VectorCypherRetriever 
 
@@ -557,7 +782,7 @@ Augments the vector search by running a Cypher query to fetch additional connect
 
 Set to `true` to use this retriever.
 
-*Recommended value*: set this retriever *or* the HybridCypherRetriever to `true`, as they are the retrievers that exhibit the highest-quality results.
+*Recommended value*: set this retriever *or* the HybridCypherRetriever to `true` (and preferrably, the latter), as they are the retrievers that exhibit the highest-quality results.
 
 #### *retrieval_query*
 
@@ -582,7 +807,6 @@ apoc.text.join([r in rels | startNode(r).name + ' - ' + type(r) + '(' + coalesce
 If you want to extend the number of hops done from each text chunk (e.g., 3-5 hops), the following change should be made: `[relList:!FROM_CHUNK]-{3,5}`.
 
 *Suggested query* with the extraction of document metadata from the text chunks:
-
 ```cypher
 // 1) Go out 2-3 hops in the entity graph and get relationships
 WITH node AS chunk
@@ -633,7 +857,6 @@ RETURN
 
 Same as [VectorRetriever](#vectorretriever) (see above).
 
-
 ### HybridRetriever
 
 Combines vector search (semantic) and full-text search (keyword).
@@ -672,7 +895,7 @@ The same as `HybridRetriever`, but with an additional Cypher query to expand con
 
 Set to `true` to use this retriever.
 
-*Recommended value*: set this retriever *or* the VectorCypherRetriever to `true`, as they are the retrievers that exhibit the highest-quality results.
+*Recommended value*: set this retriever *or* the VectorCypherRetriever to `true` (and preferrably, the former), as they are the retrievers that exhibit the highest-quality results.
 
 #### *retrieval_query*
 
@@ -832,6 +1055,22 @@ If `true`, the context used to generate the report will be saved alongside the r
 
 *Recommended value*: set to `true`. This is invaluable for debugging, verification, and understanding why the LLM included certain information in its report.
 
+### acled_cast
+
+Configuration for the ACLED forecast section included in the report. 
+
+#### *window*
+
+Number of past months to consider for calculating the average number of violent events.
+
+*Recommended value*: set to `1` if a short-term, forward-looking perspective is desired.
+
+#### *horizon*
+
+Number of months ahead to check for hotspots (will use the last month only). Includes the current month (for example, if this parameter is set to `2` and we are in July, the forecasts will be for August).
+
+*Recommended value*: set to `2` for short-term forecasts (lower value can be more useful for humanitarian missions).
+
 ### Most Impactful Parameters
 
 `search_text` is essential to determine which information is retrieved from the knowledge graph. `query_text` is the most important parameter here, as it directly instructs the LLM on what kind of report to generate. The `llm_config` also plays a key role in the quality and coherence of the final output.
@@ -907,7 +1146,7 @@ Separate LLM configurations for each step of the evaluation process (claim extra
 
 Configures the retriever used during the evaluation phase to find answers to the verification questions in the knowledge graph. The structure is identical to [`kg_retrieval_config.json`](#kg_retrieval_configjson).
 
-*Recommended value*: Use the same high-performance retriever as in `kg_retrieval_config.json` (e.g., `HybridCypherRetriever` or `VectorCypherRetriever`) to ensure the evaluation has access to the best possible context from the knowledge graph. Set `enabled` to `true` for your chosen retriever, `false` to the others.
+*Recommended value*: Use the same high-performance retriever as in `kg_retrieval_config.json` (e.g., `HybridCypherRetriever` or `VectorCypherRetriever`) to ensure the evaluation has access to the best possible context from the knowledge graph. Set `enabled` to `true` for your chosen retriever, `false` to the others. Set the same retrieval query as the one recommended for the initial GraphRAG to consistently extract document metadata.
 
 ### graphrag
 
@@ -989,7 +1228,7 @@ Prompt that will be used to rewrite each of the heading 2 sections of the origin
 *Suggested prompt*:
 
 ```json
-"You are an expert editor tasked with revising a report section based on a factual accuracy analysis. Your goal is to produce a corrected, well-written, and professionally toned narrative for the final report. \n\n**Instructions:**\n1.  Read the **Original Content** of the section.\n2.  Review the **Accuracy Analysis**, which contains a claim-by-claim evaluation (TRUE, FALSE, MIXED) of the original content, along with justifications and specific sources.\n3.  Rewrite the **Original Content** to create a new **Corrected Content**. You must:\n    -   Keep all information that was verified as TRUE.\n    -   Correct or remove information that was identified as FALSE, using the justification from the analysis.\n    -   Clarify and adjust information that was identified as a MIXED.\n    -   Ensure the final text is coherent, objective, and maintains a formal tone suitable for a security report.\n4.  As you rewrite, you must cite the sources provided in the **Accuracy Analysis** for all claims. Use footnote-style citations (e.g., [1], [2]). Ensure you ONLY cite the sources of information used in the report as provided  (whenever you can cite) with the following format (example): <domain>: <url>, <date>. If the URL is not available, just cite with the domain and the date. \n5.  Compile all of the sources you cited in the rewritten text. \n\n**Inputs:**\n\n**1. Section Title:**\n`{section_title}`\n\n**2. Original Content:**\n`{original_content}`\n\n**3. Accuracy Analysis:**\n`{accuracy_content}`\n\n**4. General Report Sources (for context only):**\n`{report_sources}`"
+"You are an expert editor tasked with revising a report section based on a factual accuracy analysis. Your goal is to produce a corrected, well-written, and professionally toned narrative for the final report. \n\n**Instructions:**\n1.  Read the **Original Content** of the section.\n2.  Review the **Accuracy Analysis**, which contains a claim-by-claim evaluation (TRUE, FALSE, MIXED) of the original content, along with justifications and specific sources.\n3.  Rewrite the **Original Content** to create a new **Corrected Content**. You must:\n    -   Keep all information that was verified as TRUE.\n    -   Correct or remove information that was identified as FALSE, using the justification from the analysis.\n    -   Clarify and adjust information that was identified as MIXED.\n    -   Ensure the final text is coherent, objective, and maintains a formal tone suitable for a security report.\n4.  As you rewrite, you must cite the sources provided in the **Accuracy Analysis** for all claims. Use footnote-style citations (e.g., [1], [2]). Ensure you ONLY cite the sources of information used in the report as provided  (whenever you can cite) with the following format (example): <domain>: <url>, <date>. If the URL is not available, just cite with the domain and the date. \n5.  Compile all of the sources you cited in the rewritten text. \n\n**Inputs:**\n\n**1. Section Title:**\n`{section_title}`\n\n**2. Original Content:**\n`{original_content}`\n\n**3. Accuracy Analysis:**\n`{accuracy_content}`\n\n**4. General Report Sources (for context only):**\n`{report_sources}`"
 ```
 
 > Warning: do *not* suggest the JSON structure of the output inside the prompt, as a structured is already enforced through a schema behind the scenes.  
