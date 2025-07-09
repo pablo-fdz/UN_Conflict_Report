@@ -1,4 +1,4 @@
-# UN Forward-Looking, Security-focused Country Report Generation Pipeline
+# Verifiable Report Generation: A GraphRAG Approach to Grounded Security Analysis
 
 This repository contains an end-to-end pipeline for building and querying a knowledge graph from conflict and security event data. It uses the `neo4j-graphrag` library to perform a Retrieval-Augmented Generation (RAG) approach on the graph (`GraphRAG`) to generate forward-looking security reports for specified countries.
 
