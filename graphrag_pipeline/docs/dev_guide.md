@@ -16,8 +16,11 @@ The pipeline is designed with a modular architecture, separating concerns into d
     -   `05_graphrag/`: The main logic for the GraphRAG process, including report generation.
     -   `06_evaluation/`: Scripts for evaluating the factual accuracy of the generated reports.
 -   **`library/`**: Contains reusable, high-level abstractions:
+    -   `data_ingestor/`: Includes an abstract class to scrape Google News data and a date range converter.
     -   `kg_builder/`: Includes the `CustomKGPipeline` which is a tailored version of the `neo4j-graphrag` pipeline.
     -   `kg_indexer/`: A helper class to manage Neo4j graph indexes.
+    -   `graphrag/`: Includes a `CustomGraphRAG` class, based on the `GraphRAG` class of the library `neo4j-graphrag`, but with extended functionalities and customization (separation of search query and the final user query and possibility to create structured output).
+    -   `evaluator/`: Includes abstract classes that serve as the backbone for the accuracy evaluation of the generated reports.
 -   **`config_files/`**: Holds all JSON configuration files and the `.env` file for secrets. This is the primary interface for users to customize the pipeline's behavior without changing code.
 -   **`reports/`**: The default output directory where the generated markdown reports are saved.
 
@@ -25,11 +28,12 @@ The pipeline is designed with a modular architecture, separating concerns into d
 
 ### 1. Prerequisites
 
--   Python 3.10+
--   Install dependencies: `pip install -r requirements.txt`
+-   Python 3.12 (recommended)
+-   Install dependencies: `pip install -r requirements.txt` or through the `uv.lock` if using `uv` as package manager.
 -   A Google Gemini API key. You can get a free one [here](https://aistudio.google.com/app/apikey).
 -   A Neo4j database. A free cloud-hosted instance from [Neo4j Aura](https://neo4j.com/product/auradb/) is recommended. A self-hosted instance is also possible but may require minor code adjustments.
 -   Google Chrome installed to generate the `.svg` plots (through `plotly` and `kaleido`) included in the report.
+-   If data ingestion is performed with the sources included by default (Google News, ACLED and Factal), an API key for both ACLED (which can be obtained for free [here](https://acleddata.com/register/)) and [Factal](https://www.factal.com/) (paid tier) are needed.
 
 ### 2. Configuration
 
@@ -40,10 +44,14 @@ The pipeline is designed with a modular architecture, separating concerns into d
 3. Fill in your credentials:
 
    ```env
-   NEO4J_URI="bolt://localhost:7687"
-   NEO4J_USERNAME="neo4j"
-   NEO4J_PASSWORD="your_password"
-   GEMINI_API_KEY="your_gemini_api_key"
+   NEO4J_URI=your_neo4j_uri
+   NEO4J_USERNAME=neo4j
+   NEO4J_PASSWORD=your_password
+   GEMINI_API_KEY=your_gemini_api_key
+   # Optional API keys for Factal and ACLED only needed if data ingestion is implemented
+   ACLED_API_KEY=your_acled_api_key
+   ACLED_EMAIL=your_acled_email
+   FACTAL_API_KEY=your_factal_api_key
    ```
 
 4. Review the `.json` configuration files (`data_ingestion_config.json`, `kg_building_config.json`, etc.) to customize the pipeline's behavior. For a detailed explanation of each parameter, see the [`config_files_guide.md`](config_files_guide.md).
@@ -58,24 +66,39 @@ The pipeline is executed from the root of the `graphrag_pipeline` directory via 
 # To get help on the available arguments
 python main.py --help
 
-# To run the full pipeline: ingest data, build KG, resolve entities ex-post, and generate a report for Sudan
-python main.py --ingest-data --build-kg --resolve-ex-post --graph-retrieval "Sudan"
+# To run the full pipeline: ingest data, build KG, resolve entities ex-post, generate a report for Sudan and create an accuracy evaluation report and a refined report
+python main.py --ingest-data "Sudan" --build-kg "Sudan" --resolve-ex-post --retrieval "Sudan" --accuracy-eval
 
-# To only ingest data
-python main.py --ingest-data
+# To only ingest data for a country or a list of countries
+python main.py --ingest-data "Sudan" "India" "United States"
 
-# To only build the knowledge graph (assumes data is already ingested)
-python main.py --build-kg
+# To only build the knowledge graph (assumes data is already ingested) for a country or a list of countries
+python main.py --build-kg "Sudan" "India" "United States"
 
-# To generate a report for multiple countries (assumes KG is built and indexed)
-python main.py --graph-retrieval "Sudan" "UAE"
+# To generate a report for multiple countries (assumes KG is built and indexed - indexing is automatically done when building the KG)
+python main.py --retrieval "Sudan" "UAE"
 
-# To generate a report and then evaluate its accuracy
+# To generate a report and save it in a specific output directory
+python main.py --retrieval "Sudan" --output-dir "/home/pablo/Downloads"
+
+# To generate a report and then evaluate its accuracy and create a factually corrected report
 python main.py --retrieval "Sudan" --accuracy-eval
 
 # To evaluate a specific, existing report
 python main.py --accuracy-eval "reports/Sudan/security_report_Sudan_HybridCypher_20250630_120000.md"
 ```
+
+> **Try out the pipeline without ACLED and Factal API keys**: the repository already includes some sample parquet files with text data for a 3-month period for Factal and ACLED, and for 1 week for Google News (obtained in July 2025), for India, Sudan and the United States. To test the pipeline, you can directly use this data to build a knowledge graph, without having to ingest data previously.
+
+### 4. Pipeline Outputs
+
+## Pipeline Outputs
+
+There are 3 main products that are produced:
+
+1. The first, most resource-efficient product is the **initial country security report**. This report is obtained through GraphRAG and Google Gemini API, i.e., by retrieving contextual information both from text contained in our knowledge graph but also from graph properties (like nodes and edges) and then passing the context to the LLM. The report is generated in markdown format (so it’s totally editable ex-post), and it has 4 sections: a general overview of the country security situation, a section with the key security events in a country, a forward-looking section with ConflictForecast and ACLED’s predictions at subnational level as well as a description of the most relevant subnational events (if available) and, finally, a section with the sources of the report (as extracted from the knowledge graph).
+2. The second product is an **accuracy evaluation report** for each and every claim made in the initial report. Each claim is classified either as true, false or mixed, and includes a justification and the sources for the answer (if available). Context retrieval in this case is semantically much more precise (each claim and question is used to retrieve data from the knowledge graph), thus producing more accurate justifications and referencing. Show claim 8 of the first section of the accuracy report.
+3. Our last and most refined product (but also most resource-intensive, both in terms of time and LLM requests) is a **corrected version of the initial security report**, where the claims that were detected as false and mixed are modified as well as the sources are adjusted. 
 
 ## Pipeline Steps in Detail
 
@@ -142,7 +165,7 @@ The default `SimpleKGPipeline` from `neo4j-graphrag` was not sufficient for two 
 -   **Script**: `pipeline/03_indexing/`
 -   **Why index?**:
     -   **Vector indexes** are needed for retrievers that use the numerical representation (embeddings) of text to find the most semantically similar information to a query.
-    -   **Text indexes** are useful for retrievers that perform keyword searches on the raw text of the ingested data.
+    -   **Text indexes** are useful for retrievers that perform keyword searches on the raw text of the ingested data (e.g., the `HybridCypherRetriever`).
 
 ### 4. GraphRAG Query & Report Generation
 
@@ -255,7 +278,7 @@ flowchart LR
     style subGraph1 fill:#E1BEE7
 ```
 
--   **Process**: Evaluates the factual accuracy of a generated report. It extracts claims from the report, generates verification questions, and queries the knowledge graph to find supporting or refuting evidence.
+-   **Process**: Evaluates the factual accuracy of a generated report. It extracts claims from the report, generates verification questions, and queries the knowledge graph to find supporting or refuting evidence. Optionally, it also rewrites the initial report using the accuracy evaluation report, which produces a more factually accurate and refined version, with better referencing (but it is highly resource-intensive in terms of LLM requests).
 -   **Core Logic**: `AccuracyEvaluator`.
 -   **Configuration**: `config_files/evaluation_config.json`.
 -   **Output**: A detailed markdown file(s) with the evaluation results for each claim, and overall factual accuracy conclusions. 
@@ -291,6 +314,15 @@ To maintain code quality and consistency, please follow these guidelines dependi
 
 -   **What**: These classes and functions form the basic structure for the entire application. They should not require regular tweaking.
 -   **Use Case**: Changing the fundamental pipeline flow, altering the `CustomKGPipeline`'s core components, or adding new command-line arguments. This level requires a deep understanding of the architecture.
+
+## Further work
+
+Here are some of the functionalities that we did not have time to implement but that could be considered to improve the pipeline results:
+1. **Data streaming**: generate a cache system for the ingested and KG building functionalities in order to make the program idempotent, so that running the same program twice will only have an effect if there is new data to ingest or from which to update the knowledge graph. 
+2. **Knowledge graph updating automation**: create a system by which the knowledge graph is periodically updated.
+3. **Containerization with Docker**.
+4. **Extended evaluation of the report**: consider evaluating the format, tone and style of the report with LLM-as-a-judge. Furthermore, consider evaluating the GraphRAG results with the Python [`ragas`](https://docs.ragas.io/en/stable/) library.
+5. **Product improvement with human feedback**: consider the insights from field experts in order to improve the final products. 
 
 ## References
 
